@@ -1,0 +1,40 @@
+package com.springboot.scheduleapi.auth.service;
+
+
+import com.springboot.scheduleapi.auth.dto.LoginRequest;
+import com.springboot.scheduleapi.auth.dto.LoginResponse;
+import com.springboot.scheduleapi.auth.jwt.JwtProvider;
+import com.springboot.scheduleapi.user.entity.User;
+import com.springboot.scheduleapi.user.repository.UserRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.springboot.scheduleapi.auth.dto.LoginResponse;
+
+@Service
+@RequiredArgsConstructor
+@Transactional(readOnly = true)
+public class AuthService {
+
+    private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
+    private final JwtProvider jwtProvider;
+
+    public LoginResponse login(LoginRequest request) {
+
+        User user = userRepository.findByEmail(request.getEmail())
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 이메일입니다."));
+
+        if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
+            throw new IllegalArgumentException("비밀번호가 일치하지 않습니다.");
+        }
+
+        String token = jwtProvider.createToken(user.getId());
+
+        return new LoginResponse(token);
+    }
+
+
+}

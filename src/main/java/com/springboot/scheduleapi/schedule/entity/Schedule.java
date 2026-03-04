@@ -1,5 +1,6 @@
 package com.springboot.scheduleapi.schedule.entity;
 
+import com.springboot.scheduleapi.user.entity.User;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -11,6 +12,10 @@ import java.time.LocalDateTime;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Schedule {
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -34,7 +39,8 @@ public class Schedule {
                     String color,
                     LocalDateTime startTime,
                     LocalDateTime endTime,
-                    String location) {
+                    String location,
+                    User user) {
 
         this.title = title;
         this.content = content;
@@ -42,6 +48,7 @@ public class Schedule {
         this.startTime = startTime;
         this.endTime = endTime;
         this.location = location;
+        this.user = user;
     }
 
     public void update(String title,

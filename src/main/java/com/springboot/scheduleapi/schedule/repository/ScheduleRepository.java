@@ -9,7 +9,8 @@ import java.util.List;
 
 public interface ScheduleRepository  extends JpaRepository<Schedule, Long> {
 
-    List<Schedule> findByStartTimeBetween(
+    List<Schedule> findByUserIdAndStartTimeBetween(
+            Long userId,
             LocalDateTime start,
             LocalDateTime end
     );
