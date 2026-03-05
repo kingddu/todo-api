@@ -29,10 +29,21 @@ public class ScheduleService {
         LocalDateTime end = date.plusDays(1).atStartOfDay();
 
         return scheduleRepository
-                .findByUserIdAndStartTimeBetween(userId, start, end)
+                .findByUser_IdAndStartTimeBetween(userId, start, end)
                 .stream()
                 .map(ScheduleResponse::from)
                 .toList();
+    }
+
+    // 🔐 단건 일정 조회 (로그인 사용자 기준)
+    @Transactional(readOnly = true)
+    public ScheduleResponse getScheduleById(Long userId, Long scheduleId) {
+
+        System.out.println("userId=" + userId + ", scheduleId=" + scheduleId);
+
+        Schedule schedule = scheduleRepository.findByUser_IdAndId(userId, scheduleId)
+                .orElseThrow(() -> new IllegalArgumentException("일정을 찾을 수 없습니다."));
+        return ScheduleResponse.from(schedule);
     }
 
     // 🔐 일정 생성 (로그인 사용자 기준)
@@ -42,6 +53,7 @@ public class ScheduleService {
         if (request.getStartTime().isAfter(request.getEndTime())) {
             throw new IllegalArgumentException("startTime은 endTime보다 늦을 수 없습니다.");
         }
+
 
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
@@ -96,5 +108,15 @@ public class ScheduleService {
         );
 
         return ScheduleResponse.from(schedule);
+    }
+
+    public List<ScheduleResponse> getSchedulesInRange(Long userId, LocalDateTime start, LocalDateTime end) {
+
+
+        return scheduleRepository
+                .findByUser_IdAndStartTimeBetween(userId, start, end)
+                .stream()
+                .map(ScheduleResponse::from)
+                .toList();
     }
 }
