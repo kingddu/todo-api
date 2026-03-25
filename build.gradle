@@ -6,7 +6,7 @@ plugins {
 
 group = 'com.springboot'
 version = '0.0.1-SNAPSHOT'
-description = 'schedule-api'
+description = 'todo-api'
 
 java {
     toolchain {
