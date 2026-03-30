@@ -1,5 +1,7 @@
 package com.springboot.todoapi.todo.service;
 
+import com.springboot.todoapi.todo.entity.TodoActionLog;
+import com.springboot.todoapi.todo.repository.TodoActionLogRepository;
 import tools.jackson.databind.JsonNode;
 import com.springboot.todoapi.todo.dto.request.TodoCreateRequest;
 import com.springboot.todoapi.todo.dto.request.TodoPatchRequest;
@@ -17,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.sql.Connection;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 import javax.sql.DataSource;
@@ -27,9 +30,29 @@ import javax.sql.DataSource;
 public class TodoService {
 
     private final TodoRepository todoRepository;
+    private final TodoActionLogRepository todoActionLogRepository;
     private final UserRepository userRepository;
 
     private final DataSource dataSource;
+
+
+    private String buildUpdateDescription(JsonNode request) {
+        List<String> changedFields = new ArrayList<>();
+
+        if (request.has("title")) changedFields.add("title");
+        if (request.has("content")) changedFields.add("content");
+        if (request.has("category")) changedFields.add("category");
+        if (request.has("type")) changedFields.add("type");
+        if (request.has("startDate")) changedFields.add("startDate");
+        if (request.has("endDate")) changedFields.add("endDate");
+        if (request.has("carryOver")) changedFields.add("carryOver");
+
+        if (changedFields.isEmpty()) {
+            return "Todo 수정";
+        }
+
+        return "수정 필드: " + String.join(", ", changedFields);
+    }
 
 
 
@@ -88,6 +111,11 @@ public class TodoService {
 
         Todo saved = todoRepository.save(todo);
 
+        // 로그 생성
+        todoActionLogRepository.save(
+                TodoActionLog.created(saved, userId)
+        );
+
         /*
         try {
             Connection conn = dataSource.getConnection();
@@ -127,6 +155,12 @@ public class TodoService {
         validatePatchedTodo(todo);
 
         todoRepository.flush();
+
+        //수정한 이력도 로그로 save
+        todoActionLogRepository.save(
+                TodoActionLog.updated(todo, userId, buildUpdateDescription(request))
+        );
+
         return TodoResponse.from(todo);
     }
 
