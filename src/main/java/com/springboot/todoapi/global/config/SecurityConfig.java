@@ -25,6 +25,7 @@ public class SecurityConfig {
                         .requestMatchers(
                                 "/api/auth/**",
                                 "/api/users/signup",
+                                "/api/groups/**",      // 추가
                                 "/api/todos/**",      // 추가
                                 "/v3/api-docs/**",
                                 "/swagger-ui/**",

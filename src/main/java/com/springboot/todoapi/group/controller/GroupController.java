@@ -20,9 +20,10 @@ public class GroupController {
             @Valid @RequestBody GroupCreateRequest request
     ) {
         Long userId = 1L; // 테스트용
+        String userEmail = "jmj@clean.com"; // TODO: 로그인 구현 후 교체
 
         return ResponseEntity.ok(
-                groupService.createGroup(userId, request)
+                groupService.createGroup(userId, userEmail, request)
         );
     }
 }

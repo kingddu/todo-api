@@ -17,8 +17,8 @@ public class TodoGroup {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false)
-    private String name;
+    @Column(name = "group_name", nullable = false)
+    private String groupName;
 
     @Column(name = "owner_user_id", nullable = false)
     private Long ownerUserId;
@@ -26,9 +26,9 @@ public class TodoGroup {
     @Column(nullable = false)
     private LocalDateTime createdAt;
 
-    public static TodoGroup create(String name, Long userId) {
+    public static TodoGroup create(String groupName, Long userId) {
         return TodoGroup.builder()
-                .name(name)
+                .groupName(groupName)
                 .ownerUserId(userId)
                 .createdAt(LocalDateTime.now())
                 .build();
