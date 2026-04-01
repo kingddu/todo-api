@@ -5,5 +5,5 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface TodoGroupRepository extends JpaRepository<TodoGroup, Long> {
 
-    boolean existsByOwnerUserIdAndGroupName(Long ownerUserId, String groupName);
+
 }

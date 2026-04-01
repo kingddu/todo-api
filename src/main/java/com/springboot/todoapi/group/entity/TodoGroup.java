@@ -20,8 +20,13 @@ public class TodoGroup {
     @Column(name = "group_name", nullable = false)
     private String groupName;
 
-    @Column(name = "owner_user_id", nullable = false)
-    private Long ownerUserId;
+    // 최초 생성자
+    @Column(name = "creator_user_id", nullable = false)
+    private Long creatorUserId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private TodoGroupStatus status;
 
     @Column(nullable = false)
     private LocalDateTime createdAt;
@@ -29,8 +34,25 @@ public class TodoGroup {
     public static TodoGroup create(String groupName, Long userId) {
         return TodoGroup.builder()
                 .groupName(groupName)
-                .ownerUserId(userId)
+                .creatorUserId(userId)
+                .status(TodoGroupStatus.INVITING)
                 .createdAt(LocalDateTime.now())
                 .build();
+    }
+
+    public void activate() {
+        this.status = TodoGroupStatus.ACTIVE;
+    }
+
+    public void inactivate() {
+        this.status = TodoGroupStatus.INACTIVE;
+    }
+
+    public void markInviting() {
+        this.status = TodoGroupStatus.INVITING;
+    }
+
+    public void disband() {
+        this.status = TodoGroupStatus.DISBANDED;
     }
 }

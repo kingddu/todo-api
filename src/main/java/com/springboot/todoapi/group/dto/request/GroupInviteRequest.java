@@ -1,6 +1,5 @@
 package com.springboot.todoapi.group.dto.request;
 
-import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
@@ -10,14 +9,8 @@ import lombok.Getter;
 import java.util.List;
 
 @Getter
-@Schema(description = "그룹 생성 요청")
-public class GroupCreateRequest {
+public class GroupInviteRequest {
 
-    @Schema(description = "정식 그룹명", example = "가족")
-    @NotBlank
-    private String groupName;
-
-    @Schema(description = "초대할 이메일 목록", example = "[\"a@test.com\", \"b@test.com\"]")
     @NotEmpty
     @Size(max = 20)
     private List<@Email @NotBlank String> inviteEmails;

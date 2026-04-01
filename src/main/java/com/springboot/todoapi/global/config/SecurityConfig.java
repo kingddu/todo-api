@@ -27,6 +27,7 @@ public class SecurityConfig {
                                 "/api/users/signup",
                                 "/api/groups/**",      // 추가
                                 "/api/todos/**",      // 추가
+                                "/api/group-invitations/**",      // 추가
                                 "/v3/api-docs/**",
                                 "/swagger-ui/**",
                                 "/swagger-ui.html"

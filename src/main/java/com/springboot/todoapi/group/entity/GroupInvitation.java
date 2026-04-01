@@ -49,4 +49,27 @@ public class GroupInvitation {
                 .createdAt(LocalDateTime.now())
                 .build();
     }
+
+    public boolean isPending() {
+        return this.status == GroupInvitationStatus.PENDING;
+    }
+
+    public boolean isExpired(LocalDateTime now) {
+        return !this.expiresAt.isAfter(now);
+    }
+
+    public void accept(LocalDateTime now) {
+        this.status = GroupInvitationStatus.ACCEPTED;
+        this.respondedAt = now;
+    }
+
+    public void reject(LocalDateTime now) {
+        this.status = GroupInvitationStatus.REJECTED;
+        this.respondedAt = now;
+    }
+
+    public void expire(LocalDateTime now) {
+        this.status = GroupInvitationStatus.EXPIRED;
+        this.respondedAt = now;
+    }
 }

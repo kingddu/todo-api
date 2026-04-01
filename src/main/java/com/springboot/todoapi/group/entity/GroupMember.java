@@ -34,6 +34,10 @@ public class GroupMember {
     @Column(name = "joined_at", nullable = false)
     private LocalDateTime joinedAt;
 
+    // 공식 그룹명과 다른 개인 alias
+    @Column(name = "alias_name", length = 100)
+    private String aliasName;
+
     public static GroupMember createLeader(Long groupId, Long userId) {
         return GroupMember.builder()
                 .groupId(groupId)
@@ -52,5 +56,35 @@ public class GroupMember {
                 .status(GroupMemberStatus.ACTIVE)
                 .joinedAt(LocalDateTime.now())
                 .build();
+    }
+
+    public void changeAliasName(String aliasName) {
+        this.aliasName = (aliasName == null || aliasName.trim().isBlank())
+                ? null
+                : aliasName.trim();
+    }
+
+    public void leave() {
+        this.status = GroupMemberStatus.LEFT;
+    }
+
+    public void kick() {
+        this.status = GroupMemberStatus.KICKED;
+    }
+
+    public void promoteToLeader() {
+        this.role = GroupMemberRole.LEADER;
+    }
+
+    public void demoteToMember() {
+        this.role = GroupMemberRole.MEMBER;
+    }
+
+    public boolean isLeader() {
+        return this.role == GroupMemberRole.LEADER;
+    }
+
+    public boolean isActive() {
+        return this.status == GroupMemberStatus.ACTIVE;
     }
 }
