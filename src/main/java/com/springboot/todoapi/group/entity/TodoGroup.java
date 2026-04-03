@@ -17,7 +17,7 @@ public class TodoGroup {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "group_name", nullable = false)
+    @Column(name = "group_name", nullable = false, length = 100)
     private String groupName;
 
     // 최초 생성자
@@ -38,6 +38,10 @@ public class TodoGroup {
                 .status(TodoGroupStatus.INVITING)
                 .createdAt(LocalDateTime.now())
                 .build();
+    }
+
+    public void changeGroupName(String groupName) {
+        this.groupName = groupName;
     }
 
     public void activate() {

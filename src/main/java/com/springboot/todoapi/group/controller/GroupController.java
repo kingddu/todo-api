@@ -1,17 +1,23 @@
 package com.springboot.todoapi.group.controller;
 
+import com.springboot.todoapi.auth.security.CustomUserPrincipal;
 import com.springboot.todoapi.group.dto.request.GroupAliasUpdateRequest;
 import com.springboot.todoapi.group.dto.request.GroupCreateRequest;
 import com.springboot.todoapi.group.dto.request.GroupInviteRequest;
 import com.springboot.todoapi.group.dto.request.GroupLeaderTransferRequest;
+import com.springboot.todoapi.group.dto.request.GroupNameUpdateRequest;
 import com.springboot.todoapi.group.dto.response.GroupDetailResponse;
 import com.springboot.todoapi.group.dto.response.GroupResponse;
+import com.springboot.todoapi.group.dto.response.MyGroupSummaryResponse;
+
+import java.util.List;
 import com.springboot.todoapi.group.service.GroupService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -27,13 +33,11 @@ public class GroupController {
     )
     @PostMapping
     public ResponseEntity<GroupResponse> createGroup(
+            @AuthenticationPrincipal CustomUserPrincipal principal,
             @Valid @RequestBody GroupCreateRequest request
     ) {
-        Long userId = 1L; // 테스트용
-        String userEmail = "jmj@clean.com"; // TODO: 로그인 구현 후 교체
-
         return ResponseEntity.ok(
-                groupService.createGroup(userId, userEmail, request)
+                groupService.createGroup(principal.getId(), principal.getEmail(), request)
         );
     }
 
@@ -43,14 +47,12 @@ public class GroupController {
     )
     @PostMapping("/{groupId}/invitations")
     public ResponseEntity<Void> inviteMembers(
+            @AuthenticationPrincipal CustomUserPrincipal principal,
             @Parameter(description = "초대할 대상 그룹 ID", example = "1")
             @PathVariable Long groupId,
             @Valid @RequestBody GroupInviteRequest request
     ) {
-        Long userId = 1L; // 테스트용
-        String userEmail = "jmj@clean.com"; // TODO: 로그인 구현 후 교체
-
-        groupService.inviteMembers(userId, userEmail, groupId, request);
+        groupService.inviteMembers(principal.getId(), principal.getEmail(), groupId, request);
         return ResponseEntity.ok().build();
     }
 
@@ -60,13 +62,12 @@ public class GroupController {
     )
     @PatchMapping("/{groupId}/alias")
     public ResponseEntity<Void> changeMyAlias(
+            @AuthenticationPrincipal CustomUserPrincipal principal,
             @Parameter(description = "별칭을 변경할 그룹 ID", example = "1")
             @PathVariable Long groupId,
             @Valid @RequestBody GroupAliasUpdateRequest request
     ) {
-        Long userId = 1L; // 테스트용
-
-        groupService.changeMyGroupAlias(userId, groupId, request.getAliasName());
+        groupService.changeMyGroupAlias(principal.getId(), groupId, request.getAliasName());
         return ResponseEntity.ok().build();
     }
 
@@ -76,13 +77,12 @@ public class GroupController {
     )
     @PatchMapping("/{groupId}/leader")
     public ResponseEntity<Void> transferLeader(
+            @AuthenticationPrincipal CustomUserPrincipal principal,
             @Parameter(description = "그룹장 위임이 발생할 그룹 ID", example = "1")
             @PathVariable Long groupId,
             @Valid @RequestBody GroupLeaderTransferRequest request
     ) {
-        Long userId = 1L; // 테스트용
-
-        groupService.transferLeader(userId, groupId, request.getTargetUserId());
+        groupService.transferLeader(principal.getId(), groupId, request.getTargetUserId());
         return ResponseEntity.ok().build();
     }
 
@@ -92,14 +92,11 @@ public class GroupController {
     )
     @DeleteMapping("/{groupId}/members/me")
     public ResponseEntity<Void> leaveGroup(
+            @AuthenticationPrincipal CustomUserPrincipal principal,
             @Parameter(description = "나갈 그룹 ID", example = "1")
             @PathVariable Long groupId
     ) {
-
-        Long userId = 1L; // 테스트용 : 그룹장
-        //Long userId = 3L; // 테스트용 : 그룹원
-
-        groupService.leaveGroup(userId, groupId);
+        groupService.leaveGroup(principal.getId(), groupId);
         return ResponseEntity.ok().build();
     }
 
@@ -109,12 +106,11 @@ public class GroupController {
     )
     @GetMapping("/{groupId}")
     public ResponseEntity<GroupDetailResponse> getGroupDetail(
+            @AuthenticationPrincipal CustomUserPrincipal principal,
             @Parameter(description = "조회할 그룹 ID", example = "1")
             @PathVariable Long groupId
     ) {
-        Long userId = 1L; // 테스트용
-
-        return ResponseEntity.ok(groupService.getGroupDetail(userId, groupId));
+        return ResponseEntity.ok(groupService.getGroupDetail(principal.getId(), groupId));
     }
 
     @Operation(
@@ -123,14 +119,53 @@ public class GroupController {
     )
     @DeleteMapping("/{groupId}/members/{targetUserId}")
     public ResponseEntity<Void> kickMember(
+            @AuthenticationPrincipal CustomUserPrincipal principal,
             @Parameter(description = "그룹 ID", example = "1")
             @PathVariable Long groupId,
             @Parameter(description = "강퇴할 대상 사용자 ID", example = "2")
             @PathVariable Long targetUserId
     ) {
-        Long userId = 1L; // 테스트용
+        groupService.kickMember(principal.getId(), groupId, targetUserId);
+        return ResponseEntity.ok().build();
+    }
 
-        groupService.kickMember(userId, groupId, targetUserId);
+    @Operation(
+            summary = "공식 그룹명 변경",
+            description = "현재 그룹장이 그룹의 공식 이름을 변경합니다."
+    )
+    @PatchMapping("/{groupId}/name")
+    public ResponseEntity<Void> changeGroupName(
+            @AuthenticationPrincipal CustomUserPrincipal principal,
+            @Parameter(description = "그룹 ID", example = "1")
+            @PathVariable Long groupId,
+            @Valid @RequestBody GroupNameUpdateRequest request
+    ) {
+        groupService.changeGroupName(principal.getId(), groupId, request.getGroupName());
+        return ResponseEntity.ok().build();
+    }
+
+    @Operation(
+            summary = "내 그룹 목록 조회",
+            description = "현재 로그인한 사용자가 활성 상태로 속한 그룹 목록을 반환합니다."
+    )
+    @GetMapping
+    public ResponseEntity<List<MyGroupSummaryResponse>> getMyGroups(
+            @AuthenticationPrincipal CustomUserPrincipal principal
+    ) {
+        return ResponseEntity.ok(groupService.getMyGroups(principal.getId()));
+    }
+
+    @Operation(
+            summary = "그룹 해산",
+            description = "현재 그룹장이 활성 그룹을 해산합니다."
+    )
+    @DeleteMapping("/{groupId}")
+    public ResponseEntity<Void> disbandGroup(
+            @AuthenticationPrincipal CustomUserPrincipal principal,
+            @Parameter(description = "해산할 그룹 ID", example = "1")
+            @PathVariable Long groupId
+    ) {
+        groupService.disbandGroup(principal.getId(), groupId);
         return ResponseEntity.ok().build();
     }
 }

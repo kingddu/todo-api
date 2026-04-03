@@ -6,7 +6,6 @@ import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 
 @Getter
 public class TodoCreateRequest {
@@ -21,11 +20,11 @@ public class TodoCreateRequest {
     @NotNull
     private TodoType type;
 
-    // 🔥 날짜들 (yyyyMMdd 형식)
     private LocalDate startDate;
     private LocalDate endDate;
 
-
-
     private Boolean carryOver;
+
+    // null이면 개인 Todo, 값이 있으면 해당 그룹의 Todo
+    private Long groupId;
 }

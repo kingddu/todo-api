@@ -2,17 +2,27 @@ package com.springboot.todoapi.group.service;
 
 import com.springboot.todoapi.group.dto.request.GroupCreateRequest;
 import com.springboot.todoapi.group.dto.request.GroupInviteRequest;
+import com.springboot.todoapi.group.dto.response.GroupDetailResponse;
+import com.springboot.todoapi.group.dto.response.GroupInvitationBlockResponse;
 import com.springboot.todoapi.group.dto.response.GroupInvitationSummaryResponse;
 import com.springboot.todoapi.group.dto.response.GroupResponse;
-import com.springboot.todoapi.group.entity.*;
+import com.springboot.todoapi.group.dto.response.MyGroupSummaryResponse;
+import com.springboot.todoapi.group.entity.GroupInvitation;
+import com.springboot.todoapi.group.entity.GroupInvitationBlock;
+import com.springboot.todoapi.group.entity.GroupInvitationStatus;
+import com.springboot.todoapi.group.entity.GroupMember;
+import com.springboot.todoapi.group.entity.GroupMemberRole;
+import com.springboot.todoapi.group.entity.GroupMemberStatus;
+import com.springboot.todoapi.group.entity.TodoGroup;
+import com.springboot.todoapi.group.entity.TodoGroupStatus;
+import com.springboot.todoapi.group.repository.GroupInvitationBlockRepository;
 import com.springboot.todoapi.group.repository.GroupInvitationRepository;
 import com.springboot.todoapi.group.repository.GroupMemberRepository;
 import com.springboot.todoapi.group.repository.TodoGroupRepository;
+import com.springboot.todoapi.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import com.springboot.todoapi.group.dto.response.GroupDetailResponse;
 
 import java.time.LocalDateTime;
 import java.util.LinkedHashSet;
@@ -30,19 +40,31 @@ public class GroupService {
     private final TodoGroupRepository groupRepository;
     private final GroupInvitationRepository groupInvitationRepository;
     private final GroupMemberRepository groupMemberRepository;
+    private final GroupInvitationBlockRepository groupInvitationBlockRepository;
+    private final UserRepository userRepository;
+
+    @Transactional(readOnly = true)
+    public List<MyGroupSummaryResponse> getMyGroups(Long userId) {
+        List<GroupMember> memberships = groupMemberRepository.findAllByUserIdAndStatus(userId, GroupMemberStatus.ACTIVE);
+        return memberships.stream()
+                .map(member -> {
+                    TodoGroup group = groupRepository.findById(member.getGroupId())
+                            .orElseThrow();
+                    return MyGroupSummaryResponse.of(group, member);
+                })
+                .toList();
+    }
 
     public GroupResponse createGroup(Long userId, String userEmail, GroupCreateRequest request) {
-
         String normalizedGroupName = normalizeGroupName(request.getGroupName());
 
         validateDuplicateEmails(request.getInviteEmails());
         validateSelfInvite(userEmail, request.getInviteEmails());
+        validateBlockedByInvitees(userId, userEmail, request.getInviteEmails());
 
-        // 그룹 마스터 저장
         TodoGroup group = TodoGroup.create(normalizedGroupName, userId);
         groupRepository.save(group);
 
-        // 그룹원 저장(처음엔 그룹리더만 저장)
         GroupMember leader = GroupMember.createLeader(group.getId(), userId);
         groupMemberRepository.save(leader);
 
@@ -56,7 +78,6 @@ public class GroupService {
                 ))
                 .toList();
 
-        // 그룹 초대 저장
         groupInvitationRepository.saveAll(invitations);
 
         syncGroupStatus(group.getId());
@@ -123,6 +144,13 @@ public class GroupService {
             invitation.expire(now);
             syncGroupStatus(invitation.getGroupId());
             throw new IllegalStateException("만료된 초대입니다.");
+        }
+
+        TodoGroup group = groupRepository.findById(invitation.getGroupId())
+                .orElseThrow(() -> new IllegalArgumentException("그룹을 찾을 수 없습니다."));
+
+        if (group.getStatus() == TodoGroupStatus.DISBANDED) {
+            throw new IllegalStateException("해산된 그룹의 초대는 수락할 수 없습니다.");
         }
 
         boolean alreadyActiveMember = groupMemberRepository.existsByGroupIdAndUserIdAndStatus(
@@ -235,6 +263,10 @@ public class GroupService {
     }
 
     private String normalizeGroupName(String groupName) {
+        if (groupName == null || groupName.trim().isBlank()) {
+            throw new IllegalArgumentException("그룹명은 비어 있을 수 없습니다.");
+        }
+
         return groupName.trim();
     }
 
@@ -242,7 +274,6 @@ public class GroupService {
         return email.trim().toLowerCase();
     }
 
-    // 그룹명 alias 변경 기능
     public void changeMyGroupAlias(Long userId, Long groupId, String aliasName) {
         GroupMember member = groupMemberRepository
                 .findByGroupIdAndUserIdAndStatus(groupId, userId, GroupMemberStatus.ACTIVE)
@@ -268,7 +299,6 @@ public class GroupService {
         return value.isBlank() ? null : value;
     }
 
-    //그룹장 변경
     public void transferLeader(Long requesterUserId, Long groupId, Long targetUserId) {
         if (requesterUserId.equals(targetUserId)) {
             throw new IllegalArgumentException("본인에게 다시 그룹장을 위임할 수 없습니다.");
@@ -294,7 +324,6 @@ public class GroupService {
         targetMember.promoteToLeader();
     }
 
-
     public void inviteMembers(Long userId, String userEmail, Long groupId, GroupInviteRequest request) {
         TodoGroup group = groupRepository.findById(groupId)
                 .orElseThrow(() -> new IllegalArgumentException("그룹을 찾을 수 없습니다."));
@@ -317,12 +346,8 @@ public class GroupService {
 
         validateDuplicateEmails(request.getInviteEmails());
         validateSelfInvite(userEmail, request.getInviteEmails());
+        validateBlockedByInvitees(userId, userEmail, request.getInviteEmails());
         validatePendingInvitations(groupId, request.getInviteEmails());
-
-        // TODO:
-        // "기존 멤버 이메일 제외"는 현재 그룹 모듈만으로는 불완전함.
-        // GroupMember는 userId만 가지고 있고 email이 없어서,
-        // user 테이블/서비스 연동 후 validateAlreadyJoinedEmails(...) 추가 권장.
 
         List<GroupInvitation> invitations = request.getInviteEmails().stream()
                 .map(this::normalizeEmail)
@@ -361,7 +386,6 @@ public class GroupService {
         }
     }
 
-    // 그룹 나가기
     public void leaveGroup(Long userId, Long groupId) {
         GroupMember member = groupMemberRepository
                 .findByGroupIdAndUserIdAndStatus(groupId, userId, GroupMemberStatus.ACTIVE)
@@ -445,7 +469,6 @@ public class GroupService {
                 .build();
     }
 
-    //강제 퇴장
     public void kickMember(Long userId, Long groupId, Long targetUserId) {
         GroupMember requester = groupMemberRepository
                 .findByGroupIdAndUserIdAndStatus(groupId, userId, GroupMemberStatus.ACTIVE)
@@ -470,5 +493,152 @@ public class GroupService {
         targetMember.kick();
 
         syncGroupStatus(groupId);
+    }
+
+    public void changeGroupName(Long userId, Long groupId, String groupName) {
+        TodoGroup group = groupRepository.findById(groupId)
+                .orElseThrow(() -> new IllegalArgumentException("그룹을 찾을 수 없습니다."));
+
+        if (group.getStatus() == TodoGroupStatus.DISBANDED) {
+            throw new IllegalStateException("해산된 그룹의 이름은 변경할 수 없습니다.");
+        }
+
+        if (group.getStatus() == TodoGroupStatus.INACTIVE) {
+            throw new IllegalStateException("비활성화된 그룹의 이름은 변경할 수 없습니다.");
+        }
+
+        GroupMember requester = groupMemberRepository
+                .findByGroupIdAndUserIdAndStatus(groupId, userId, GroupMemberStatus.ACTIVE)
+                .orElseThrow(() -> new IllegalArgumentException("해당 그룹의 활성 멤버가 아닙니다."));
+
+        if (!requester.isLeader()) {
+            throw new IllegalStateException("그룹장만 그룹명을 변경할 수 있습니다.");
+        }
+
+        String normalizedGroupName = normalizeGroupName(groupName);
+        group.changeGroupName(normalizedGroupName);
+    }
+
+    public void disbandGroup(Long userId, Long groupId) {
+        TodoGroup group = groupRepository.findById(groupId)
+                .orElseThrow(() -> new IllegalArgumentException("그룹을 찾을 수 없습니다."));
+
+        GroupMember requester = groupMemberRepository
+                .findByGroupIdAndUserIdAndStatus(groupId, userId, GroupMemberStatus.ACTIVE)
+                .orElseThrow(() -> new IllegalArgumentException("해당 그룹의 활성 멤버가 아닙니다."));
+
+        if (!requester.isLeader()) {
+            throw new IllegalStateException("그룹장만 그룹을 해산할 수 있습니다.");
+        }
+
+        if (group.getStatus() != TodoGroupStatus.ACTIVE) {
+            throw new IllegalStateException("활성화된 그룹만 해산할 수 있습니다.");
+        }
+
+        group.disband();
+        expirePendingInvitationsOnDisband(groupId);
+    }
+
+    private void expirePendingInvitationsOnDisband(Long groupId) {
+        LocalDateTime now = LocalDateTime.now();
+
+        List<GroupInvitation> pendingInvitations = groupInvitationRepository
+                .findAllByGroupIdAndStatus(groupId, GroupInvitationStatus.PENDING);
+
+        for (GroupInvitation invitation : pendingInvitations) {
+            invitation.expire(now);
+        }
+    }
+
+    public void blockInviter(Long blockerUserId, String blockerEmail, String blockedEmail) {
+        String normalizedBlockerEmail = normalizeEmail(blockerEmail);
+        String normalizedBlockedEmail = normalizeEmail(blockedEmail);
+
+        if (normalizedBlockedEmail.equals(normalizedBlockerEmail)) {
+            throw new IllegalArgumentException("본인은 차단할 수 없습니다.");
+        }
+
+
+        var blockedUser = userRepository.findByEmail(normalizedBlockedEmail)
+                .orElseThrow(() -> new IllegalArgumentException("가입된 사용자만 차단할 수 있습니다."));
+
+        boolean alreadyBlockedByUserId = groupInvitationBlockRepository
+                .existsByBlockerUserIdAndBlockedUserId(blockerUserId, blockedUser.getId());
+
+        boolean alreadyBlockedByEmail = groupInvitationBlockRepository
+                .existsByBlockerUserIdAndBlockedEmail(blockerUserId, normalizedBlockedEmail);
+
+        if (alreadyBlockedByUserId || alreadyBlockedByEmail) {
+            throw new IllegalStateException("이미 차단한 사용자입니다.");
+        }
+
+        groupInvitationBlockRepository.save(
+                GroupInvitationBlock.create(
+                        blockerUserId,
+                        blockedUser.getId(),
+                        normalizedBlockedEmail
+                )
+        );
+
+        rejectPendingInvitationsFromBlockedUser(normalizedBlockerEmail, blockedUser.getId());
+    }
+
+    @Transactional(readOnly = true)
+    public List<GroupInvitationBlockResponse> getMyInvitationBlocks(Long userId) {
+        return groupInvitationBlockRepository.findAllByBlockerUserIdOrderByCreatedAtDesc(userId)
+                .stream()
+                .map(GroupInvitationBlockResponse::from)
+                .toList();
+    }
+
+    public void unblockInviter(Long blockerUserId, Long blockId) {
+        GroupInvitationBlock block = groupInvitationBlockRepository.findByIdAndBlockerUserId(blockId, blockerUserId)
+                .orElseThrow(() -> new IllegalArgumentException("차단 내역을 찾을 수 없습니다."));
+
+        groupInvitationBlockRepository.delete(block);
+    }
+
+    private void rejectPendingInvitationsFromBlockedUser(String blockerEmail, Long blockedUserId) {
+        LocalDateTime now = LocalDateTime.now();
+
+        List<GroupInvitation> invitations = groupInvitationRepository
+                .findAllByEmailAndStatusOrderByCreatedAtDesc(blockerEmail, GroupInvitationStatus.PENDING);
+
+        Set<Long> affectedGroupIds = new LinkedHashSet<>();
+
+        for (GroupInvitation invitation : invitations) {
+            if (invitation.getInvitedByUserId().equals(blockedUserId)) {
+                invitation.reject(now);
+                affectedGroupIds.add(invitation.getGroupId());
+            }
+        }
+
+        for (Long groupId : affectedGroupIds) {
+            syncGroupStatus(groupId);
+        }
+    }
+
+    private void validateBlockedByInvitees(Long inviterUserId, String inviterEmail, List<String> inviteEmails) {
+        String normalizedInviterEmail = normalizeEmail(inviterEmail);
+
+        for (String inviteEmail : inviteEmails) {
+            String normalizedInviteeEmail = normalizeEmail(inviteEmail);
+
+            var invitee = userRepository.findByEmail(normalizedInviteeEmail).orElse(null);
+
+            if (invitee == null) {
+                continue;
+            }
+
+            boolean blockedByUserId = groupInvitationBlockRepository
+                    .existsByBlockerUserIdAndBlockedUserId(invitee.getId(), inviterUserId);
+
+            boolean blockedByEmail = groupInvitationBlockRepository
+                    .existsByBlockerUserIdAndBlockedEmail(invitee.getId(), normalizedInviterEmail);
+
+            if (blockedByUserId || blockedByEmail) {
+                throw new IllegalArgumentException("초대를 처리할 수 없는 대상이 포함되어 있습니다.");
+            }
+        }
     }
 }

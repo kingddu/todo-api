@@ -2,5 +2,7 @@ package com.springboot.todoapi.todo.entity;
 
 public enum TodoActionType {
     CREATED,
-    UPDATED
+    UPDATED,
+    COMPLETED,
+    UNCOMPLETED
 }

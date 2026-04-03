@@ -1,5 +1,6 @@
 package com.springboot.todoapi.todo.entity;
 
+import com.springboot.todoapi.group.entity.TodoGroup;
 import com.springboot.todoapi.user.entity.User;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
@@ -26,6 +27,10 @@ public class Todo {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "group_id")
+    private TodoGroup group;
 
     @Column(nullable = false)
     private String title;
@@ -71,7 +76,8 @@ public class Todo {
             LocalDate startDate,
             LocalDate endDate,
             boolean carryOver,
-            User user
+            User user,
+            TodoGroup group
     ) {
         this.title = title;
         this.content = content;
@@ -81,6 +87,7 @@ public class Todo {
         this.endDate = endDate;
         this.carryOver = carryOver;
         this.user = user;
+        this.group = group;
         this.completed = false;
     }
 

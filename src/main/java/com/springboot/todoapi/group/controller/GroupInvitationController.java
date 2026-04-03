@@ -1,12 +1,13 @@
 package com.springboot.todoapi.group.controller;
 
+import com.springboot.todoapi.auth.security.CustomUserPrincipal;
 import com.springboot.todoapi.group.dto.response.GroupInvitationSummaryResponse;
 import com.springboot.todoapi.group.service.GroupService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
-import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -23,11 +24,10 @@ public class GroupInvitationController {
             description = "현재 로그인한 사용자가 받은 대기 중(PENDING) 그룹 초대 목록을 조회합니다."
     )
     @GetMapping("/me")
-    public ResponseEntity<List<GroupInvitationSummaryResponse>> getMyInvitations() {
-        Long userId = 2L; // 테스트용
-        String userEmail = "lja@clean.com"; // TODO: 로그인 구현 후 교체
-
-        return ResponseEntity.ok(groupService.getMyPendingInvitations(userId, userEmail));
+    public ResponseEntity<List<GroupInvitationSummaryResponse>> getMyInvitations(
+            @AuthenticationPrincipal CustomUserPrincipal principal
+    ) {
+        return ResponseEntity.ok(groupService.getMyPendingInvitations(principal.getId(), principal.getEmail()));
     }
 
     @Operation(
@@ -36,16 +36,11 @@ public class GroupInvitationController {
     )
     @PostMapping("/{invitationId}/accept")
     public ResponseEntity<Void> acceptInvitation(
+            @AuthenticationPrincipal CustomUserPrincipal principal,
             @Parameter(description = "수락할 그룹 초대 ID", example = "1")
             @PathVariable Long invitationId
     ) {
-        // Long userId = 2L; // 테스트용
-        // String userEmail = "lja@clean.com"; // TODO: 로그인 구현 후 교체
-
-        Long userId = 3L; // 테스트용
-        String userEmail = "jsy@clean.com"; // TODO: 로그인 구현 후 교체
-
-        groupService.acceptInvitation(userId, userEmail, invitationId);
+        groupService.acceptInvitation(principal.getId(), principal.getEmail(), invitationId);
         return ResponseEntity.ok().build();
     }
 
@@ -55,12 +50,11 @@ public class GroupInvitationController {
     )
     @PostMapping("/{invitationId}/reject")
     public ResponseEntity<Void> rejectInvitation(
+            @AuthenticationPrincipal CustomUserPrincipal principal,
             @Parameter(description = "거절할 그룹 초대 ID", example = "1")
             @PathVariable Long invitationId
     ) {
-        String userEmail = "lja@clean.com"; // TODO: 로그인 구현 후 교체
-
-        groupService.rejectInvitation(userEmail, invitationId);
+        groupService.rejectInvitation(principal.getEmail(), invitationId);
         return ResponseEntity.ok().build();
     }
 }

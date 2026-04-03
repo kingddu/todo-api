@@ -1,5 +1,10 @@
 package com.springboot.todoapi.todo.service;
 
+import com.springboot.todoapi.group.entity.GroupMemberStatus;
+import com.springboot.todoapi.group.entity.TodoGroup;
+import com.springboot.todoapi.group.entity.TodoGroupStatus;
+import com.springboot.todoapi.group.repository.GroupMemberRepository;
+import com.springboot.todoapi.group.repository.TodoGroupRepository;
 import com.springboot.todoapi.todo.entity.TodoActionLog;
 import com.springboot.todoapi.todo.repository.TodoActionLogRepository;
 import tools.jackson.databind.JsonNode;
@@ -12,17 +17,15 @@ import com.springboot.todoapi.todo.repository.TodoRepository;
 import com.springboot.todoapi.user.entity.User;
 import com.springboot.todoapi.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
-import org.jspecify.annotations.Nullable;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
-import java.sql.Connection;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-
-import javax.sql.DataSource;
 
 
 @Service
@@ -32,8 +35,8 @@ public class TodoService {
     private final TodoRepository todoRepository;
     private final TodoActionLogRepository todoActionLogRepository;
     private final UserRepository userRepository;
-
-    private final DataSource dataSource;
+    private final TodoGroupRepository todoGroupRepository;
+    private final GroupMemberRepository groupMemberRepository;
 
 
     private String buildUpdateDescription(JsonNode request) {
@@ -56,32 +59,6 @@ public class TodoService {
 
 
 
-    // 🔐 하루 일정 조회 (로그인 사용자 기준)
-    /*
-    @Transactional(readOnly = true)
-    public List<TodoResponse> getDaySchedule(Long userId, LocalDate date) {
-
-        LocalDateTime start = date.atStartOfDay();
-        LocalDateTime end = date.plusDays(1).atStartOfDay();
-
-        return scheduleRepository
-                .findByUser_IdAndStartTimeBetween(userId, start, end)
-                .stream()
-                .map(TodoResponse::from)
-                .toList();
-    }
-
-    // 🔐 단건 일정 조회 (로그인 사용자 기준)
-    @Transactional(readOnly = true)
-    public TodoResponse getScheduleById(Long userId, Long scheduleId) {
-
-        System.out.println("userId=" + userId + ", scheduleId=" + scheduleId);
-
-        Todo schedule = scheduleRepository.findByUser_IdAndId(userId, scheduleId)
-                .orElseThrow(() -> new IllegalArgumentException("일정을 찾을 수 없습니다."));
-        return TodoResponse.from(schedule);
-    }
-*/
 
     // todo 생성
     @Transactional
@@ -93,10 +70,11 @@ public class TodoService {
         LocalDate startDate = request.getStartDate();
         LocalDate endDate = request.getEndDate();
 
-
         if (startDate.isAfter(endDate)) {
             throw new IllegalArgumentException("시작일은 종료일보다 이후일 수 없습니다.");
         }
+
+        TodoGroup group = resolveGroup(request.getGroupId(), userId);
 
         Todo todo = Todo.builder()
                 .title(request.getTitle())
@@ -107,27 +85,75 @@ public class TodoService {
                 .endDate(endDate)
                 .carryOver(Boolean.TRUE.equals(request.getCarryOver()))
                 .user(user)
+                .group(group)
                 .build();
 
         Todo saved = todoRepository.save(todo);
 
-        // 로그 생성
         todoActionLogRepository.save(
                 TodoActionLog.created(saved, userId)
         );
 
-        /*
-        try {
-            Connection conn = dataSource.getConnection();
-            System.out.println(">>> REAL DB URL = " + conn.getMetaData().getURL());
-        } catch (Exception e) {
-            e.printStackTrace();
+        return TodoResponse.from(saved);
+    }
+
+    private TodoGroup resolveGroup(Long groupId, Long userId) {
+        if (groupId == null) {
+            return null;
         }
 
-        System.out.println(">>> SAVED ID = " + saved.getId());
-*/
+        TodoGroup group = todoGroupRepository.findById(groupId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "그룹을 찾을 수 없습니다."));
 
-        return TodoResponse.from(saved);
+        if (group.getStatus() == TodoGroupStatus.DISBANDED) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "해산된 그룹에는 Todo를 추가할 수 없습니다.");
+        }
+
+        boolean isMember = groupMemberRepository.existsByGroupIdAndUserIdAndStatus(
+                groupId, userId, GroupMemberStatus.ACTIVE
+        );
+        if (!isMember) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "해당 그룹의 멤버가 아닙니다.");
+        }
+
+        return group;
+    }
+
+    @Transactional
+    public void delete(Long userId, Long todoId) {
+        Todo todo = todoRepository.findByIdAndUser_Id(todoId, userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "삭제할 Todo가 없습니다."));
+
+        todoActionLogRepository.deleteAllByTodo_Id(todoId);
+        todoRepository.delete(todo);
+    }
+
+    @Transactional
+    public TodoResponse complete(Long userId, Long todoId) {
+        Todo todo = todoRepository.findByIdAndUser_Id(todoId, userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Todo를 찾을 수 없습니다."));
+
+        todo.complete(userId);
+
+        todoActionLogRepository.save(
+                TodoActionLog.completed(todo, userId)
+        );
+
+        return TodoResponse.from(todo);
+    }
+
+    @Transactional
+    public TodoResponse uncomplete(Long userId, Long todoId) {
+        Todo todo = todoRepository.findByIdAndUser_Id(todoId, userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Todo를 찾을 수 없습니다."));
+
+        todo.uncomplete();
+
+        todoActionLogRepository.save(
+                TodoActionLog.uncompleted(todo, userId)
+        );
+
+        return TodoResponse.from(todo);
     }
 
     @Transactional(readOnly = true)
@@ -251,54 +277,4 @@ public class TodoService {
         return normalizeNullableText(node.asText());
     }
 
-    // 🔐 일정 삭제 (본인 것만)
-    /*
-    @Transactional
-    public void delete(Long userId, Long scheduleId) {
-
-        Todo schedule = scheduleRepository.findById(scheduleId)
-                .orElseThrow(() -> new IllegalArgumentException("해당 일정이 없습니다."));
-
-        if (!schedule.getUser().getId().equals(userId)) {
-            throw new IllegalArgumentException("본인의 일정만 삭제할 수 있습니다.");
-        }
-
-        scheduleRepository.delete(schedule);
-    }
-*/
-    // 🔐 일정 수정 (본인 것만)
-    /*
-    @Transactional
-    public TodoResponse update(Long userId, Long scheduleId, TodoCreateRequest request) {
-
-        Todo schedule = scheduleRepository.findById(scheduleId)
-                .orElseThrow(() -> new IllegalArgumentException("해당 일정이 없습니다."));
-
-        if (!schedule.getUser().getId().equals(userId)) {
-            throw new IllegalArgumentException("본인의 일정만 수정할 수 있습니다.");
-        }
-
-        schedule.update(
-                request.getTitle(),
-                request.getContent(),
-                request.getColor(),
-                request.getStartTime(),
-                request.getEndTime(),
-                request.getLocation()
-        );
-
-        return TodoResponse.from(schedule);
-    }
-
-    public List<TodoResponse> getSchedulesInRange(Long userId, LocalDateTime start, LocalDateTime end) {
-
-
-        return scheduleRepository
-                .findByUser_IdAndStartTimeBetween(userId, start, end)
-                .stream()
-                .map(TodoResponse::from)
-                .toList();
-    }
-
-     */
 }

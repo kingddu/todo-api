@@ -1,5 +1,7 @@
 package com.springboot.todoapi.todo.dto.response;
 
+import com.springboot.todoapi.group.entity.TodoGroup;
+import com.springboot.todoapi.group.entity.TodoGroupStatus;
 import com.springboot.todoapi.todo.entity.Todo;
 import com.springboot.todoapi.todo.entity.TodoType;
 import lombok.Builder;
@@ -20,20 +22,23 @@ public class TodoResponse {
 
     private TodoType type;
 
-    // 🔥 날짜들
-    private LocalDate date;
     private LocalDate startDate;
     private LocalDate endDate;
-    private LocalDateTime dueDate;
 
-    // 🔥 상태
     private boolean completed;
     private Long completedBy;
     private LocalDateTime completedAt;
 
     private boolean carryOver;
 
+    // null이면 개인 Todo
+    private Long groupId;
+    private String groupName;
+    private boolean groupDisbanded;
+
     public static TodoResponse from(Todo todo) {
+        TodoGroup group = todo.getGroup();
+
         return TodoResponse.builder()
                 .id(todo.getId())
                 .title(todo.getTitle())
@@ -46,6 +51,9 @@ public class TodoResponse {
                 .completedBy(todo.getCompletedBy())
                 .completedAt(todo.getCompletedAt())
                 .carryOver(todo.isCarryOver())
+                .groupId(group != null ? group.getId() : null)
+                .groupName(group != null ? group.getGroupName() : null)
+                .groupDisbanded(group != null && group.getStatus() == TodoGroupStatus.DISBANDED)
                 .build();
     }
 }

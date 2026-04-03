@@ -68,4 +68,22 @@ public class TodoActionLog {
                 .description(description)
                 .build();
     }
+
+    public static TodoActionLog completed(Todo todo, Long actorUserId) {
+        return TodoActionLog.builder()
+                .todo(todo)
+                .actorUserId(actorUserId)
+                .actionType(TodoActionType.COMPLETED)
+                .description("Todo 완료")
+                .build();
+    }
+
+    public static TodoActionLog uncompleted(Todo todo, Long actorUserId) {
+        return TodoActionLog.builder()
+                .todo(todo)
+                .actorUserId(actorUserId)
+                .actionType(TodoActionType.UNCOMPLETED)
+                .description("Todo 완료 취소")
+                .build();
+    }
 }

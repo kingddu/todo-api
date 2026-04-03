@@ -8,4 +8,6 @@ import java.util.List;
 public interface TodoActionLogRepository extends JpaRepository<TodoActionLog, Long> {
 
     List<TodoActionLog> findByTodo_IdOrderByCreatedAtDesc(Long todoId);
+
+    void deleteAllByTodo_Id(Long todoId);
 }
