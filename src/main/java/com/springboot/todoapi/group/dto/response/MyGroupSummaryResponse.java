@@ -8,15 +8,17 @@ public record MyGroupSummaryResponse(
         String groupName,
         String aliasName,
         String myRole,
-        String status
+        String status,
+        long activeMemberCount
 ) {
-    public static MyGroupSummaryResponse of(TodoGroup group, GroupMember member) {
+    public static MyGroupSummaryResponse of(TodoGroup group, GroupMember member, long activeMemberCount) {
         return new MyGroupSummaryResponse(
                 group.getId(),
                 group.getGroupName(),
                 member.getAliasName(),
                 member.getRole().name(),
-                group.getStatus().name()
+                group.getStatus().name(),
+                activeMemberCount
         );
     }
 }

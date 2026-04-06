@@ -77,6 +77,12 @@ public class GroupDetailResponse {
         @Schema(description = "사용자 ID", example = "2")
         private Long userId;
 
+        @Schema(description = "사용자 이름", example = "홍길동")
+        private String userName;
+
+        @Schema(description = "사용자 이메일", example = "user@example.com")
+        private String userEmail;
+
         @Schema(description = "그룹 내 역할", example = "LEADER")
         private String role;
 

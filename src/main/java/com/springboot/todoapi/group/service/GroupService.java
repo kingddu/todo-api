@@ -19,6 +19,7 @@ import com.springboot.todoapi.group.repository.GroupInvitationBlockRepository;
 import com.springboot.todoapi.group.repository.GroupInvitationRepository;
 import com.springboot.todoapi.group.repository.GroupMemberRepository;
 import com.springboot.todoapi.group.repository.TodoGroupRepository;
+import com.springboot.todoapi.user.entity.User;
 import com.springboot.todoapi.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -50,7 +51,9 @@ public class GroupService {
                 .map(member -> {
                     TodoGroup group = groupRepository.findById(member.getGroupId())
                             .orElseThrow();
-                    return MyGroupSummaryResponse.of(group, member);
+                    long activeMemberCount = groupMemberRepository.countByGroupIdAndStatus(
+                            group.getId(), GroupMemberStatus.ACTIVE);
+                    return MyGroupSummaryResponse.of(group, member, activeMemberCount);
                 })
                 .toList();
     }
@@ -120,11 +123,35 @@ public class GroupService {
                 ).stream()
                 .collect(Collectors.toMap(TodoGroup::getId, Function.identity()));
 
+        // 초대자 이름 조회
+        Set<Long> inviterIds = activeInvitations.stream()
+                .map(GroupInvitation::getInvitedByUserId)
+                .collect(Collectors.toSet());
+        Map<Long, String> inviterNameMap = userRepository.findAllById(inviterIds).stream()
+                .collect(Collectors.toMap(User::getId, User::getName));
+
+        // 각 그룹의 활성 멤버 이메일 조회
+        Set<Long> groupIds = groupMap.keySet();
+        List<GroupMember> allMembers = groupMemberRepository.findAllByGroupIdInAndStatus(groupIds, GroupMemberStatus.ACTIVE);
+        Set<Long> memberUserIds = allMembers.stream()
+                .map(GroupMember::getUserId)
+                .collect(Collectors.toSet());
+        Map<Long, String> memberEmailMap = userRepository.findAllById(memberUserIds).stream()
+                .collect(Collectors.toMap(User::getId, User::getEmail));
+
+        Map<Long, List<String>> memberEmailsByGroup = allMembers.stream()
+                .collect(Collectors.groupingBy(
+                        GroupMember::getGroupId,
+                        Collectors.mapping(m -> memberEmailMap.getOrDefault(m.getUserId(), ""), Collectors.toList())
+                ));
+
         return activeInvitations.stream()
                 .map(invitation -> {
                     TodoGroup group = groupMap.get(invitation.getGroupId());
                     String groupName = group != null ? group.getGroupName() : "(삭제된 그룹)";
-                    return GroupInvitationSummaryResponse.of(invitation, groupName);
+                    String inviterName = inviterNameMap.getOrDefault(invitation.getInvitedByUserId(), "알 수 없음");
+                    List<String> memberEmails = memberEmailsByGroup.getOrDefault(invitation.getGroupId(), List.of());
+                    return GroupInvitationSummaryResponse.of(invitation, groupName, inviterName, memberEmails);
                 })
                 .toList();
     }
@@ -424,11 +451,23 @@ public class GroupService {
         long rejectedCount = groupInvitationRepository.countByGroupIdAndStatus(groupId, GroupInvitationStatus.REJECTED);
         long expiredCount = groupInvitationRepository.countByGroupIdAndStatus(groupId, GroupInvitationStatus.EXPIRED);
 
-        List<GroupDetailResponse.MemberInfo> members = groupMemberRepository
-                .findAllByGroupIdAndStatusOrderByJoinedAtAsc(groupId, GroupMemberStatus.ACTIVE)
-                .stream()
+        List<GroupMember> activeMembers = groupMemberRepository
+                .findAllByGroupIdAndStatusOrderByJoinedAtAsc(groupId, GroupMemberStatus.ACTIVE);
+
+        Set<Long> memberUserIds = activeMembers.stream()
+                .map(GroupMember::getUserId)
+                .collect(Collectors.toSet());
+        List<User> memberUsers = userRepository.findAllById(memberUserIds);
+        Map<Long, String> memberUserNameMap = memberUsers.stream()
+                .collect(Collectors.toMap(User::getId, User::getName));
+        Map<Long, String> memberUserEmailMap = memberUsers.stream()
+                .collect(Collectors.toMap(User::getId, User::getEmail));
+
+        List<GroupDetailResponse.MemberInfo> members = activeMembers.stream()
                 .map(member -> GroupDetailResponse.MemberInfo.builder()
                         .userId(member.getUserId())
+                        .userName(memberUserNameMap.getOrDefault(member.getUserId(), "알 수 없음"))
+                        .userEmail(memberUserEmailMap.getOrDefault(member.getUserId(), ""))
                         .role(member.getRole().name())
                         .aliasName(member.getAliasName())
                         .joinedAt(member.getJoinedAt())

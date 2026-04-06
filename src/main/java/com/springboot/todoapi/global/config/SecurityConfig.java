@@ -19,6 +19,8 @@ import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 import org.springframework.security.web.context.SecurityContextHolderFilter;
 import org.springframework.session.data.redis.config.annotation.web.http.EnableRedisHttpSession;
+import org.springframework.session.web.http.CookieSerializer;
+import org.springframework.session.web.http.DefaultCookieSerializer;
 
 import java.nio.charset.StandardCharsets;
 
@@ -97,5 +99,16 @@ public class SecurityConfig {
     @Bean
     public PasswordEncoder passwordEncoder() {
         return PasswordEncoderFactories.createDelegatingPasswordEncoder();
+    }
+
+    // SESSION 쿠키를 영속 쿠키로 설정 (브라우저 닫아도 유지)
+    @Bean
+    public CookieSerializer cookieSerializer() {
+        DefaultCookieSerializer serializer = new DefaultCookieSerializer();
+        serializer.setCookieName("SESSION");
+        serializer.setCookieMaxAge(1800); // Redis 세션 만료 시간과 동일 (30분)
+        serializer.setSameSite("Lax");
+        serializer.setUseHttpOnlyCookie(true);
+        return serializer;
     }
 }

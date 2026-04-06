@@ -6,6 +6,7 @@ import lombok.Builder;
 import lombok.Getter;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Getter
 @Builder
@@ -17,8 +18,15 @@ public class GroupInvitationSummaryResponse {
     private String status;
     private LocalDateTime expiresAt;
     private Long invitedByUserId;
+    private String invitedByUserName;
+    private List<String> memberEmails;
 
-    public static GroupInvitationSummaryResponse of(GroupInvitation invitation, String groupName) {
+    public static GroupInvitationSummaryResponse of(
+            GroupInvitation invitation,
+            String groupName,
+            String invitedByUserName,
+            List<String> memberEmails
+    ) {
         return GroupInvitationSummaryResponse.builder()
                 .invitationId(invitation.getId())
                 .groupId(invitation.getGroupId())
@@ -26,6 +34,8 @@ public class GroupInvitationSummaryResponse {
                 .status(invitation.getStatus().name())
                 .expiresAt(invitation.getExpiresAt())
                 .invitedByUserId(invitation.getInvitedByUserId())
+                .invitedByUserName(invitedByUserName)
+                .memberEmails(memberEmails)
                 .build();
     }
 }
