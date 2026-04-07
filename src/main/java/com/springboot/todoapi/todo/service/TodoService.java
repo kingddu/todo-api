@@ -22,10 +22,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.springboot.todoapi.group.entity.GroupMember;
+
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 
 @Service
@@ -130,8 +134,7 @@ public class TodoService {
 
     @Transactional
     public TodoResponse complete(Long userId, Long todoId) {
-        Todo todo = todoRepository.findByIdAndUser_Id(todoId, userId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Todo를 찾을 수 없습니다."));
+        Todo todo = findTodoWithAccess(userId, todoId);
 
         todo.complete(userId);
 
@@ -144,8 +147,7 @@ public class TodoService {
 
     @Transactional
     public TodoResponse uncomplete(Long userId, Long todoId) {
-        Todo todo = todoRepository.findByIdAndUser_Id(todoId, userId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Todo를 찾을 수 없습니다."));
+        Todo todo = findTodoWithAccess(userId, todoId);
 
         todo.uncomplete();
 
@@ -156,19 +158,70 @@ public class TodoService {
         return TodoResponse.from(todo);
     }
 
+    // 본인이 만든 todo이거나, 해당 그룹의 활성 멤버이면 접근 허용
+    private Todo findTodoWithAccess(Long userId, Long todoId) {
+        Todo todo = todoRepository.findById(todoId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Todo를 찾을 수 없습니다."));
+
+        if (todo.getUser().getId().equals(userId)) {
+            return todo;
+        }
+
+        if (todo.getGroup() != null) {
+            boolean isMember = groupMemberRepository.existsByGroupIdAndUserIdAndStatus(
+                    todo.getGroup().getId(), userId, GroupMemberStatus.ACTIVE);
+            if (isMember) return todo;
+        }
+
+        throw new ResponseStatusException(HttpStatus.FORBIDDEN, "접근 권한이 없습니다.");
+    }
+
     @Transactional(readOnly = true)
     public List<TodoResponse> getTodosByRange(Long userId, LocalDate from, LocalDate to) {
         if (from.isAfter(to)) {
             throw new IllegalArgumentException("조회 시작일은 종료일보다 이후일 수 없습니다.");
         }
 
-        return todoRepository
-                .findByUser_IdAndStartDateLessThanEqualAndEndDateGreaterThanEqual(userId, to, from)
+        LocalDate today = LocalDate.now();
+
+        // 1. 내가 만든 todo (개인 + 내가 만든 그룹 todo)
+        List<Todo> myTodos = todoRepository
+                .findByUser_IdAndStartDateLessThanEqualAndEndDateGreaterThanEqual(userId, to, from);
+
+        // 2. 내가 활성 멤버로 속한 그룹 ID 목록
+        List<Long> myGroupIds = groupMemberRepository
+                .findAllByUserIdAndStatus(userId, GroupMemberStatus.ACTIVE)
                 .stream()
-                .map(TodoResponse::from)
+                .map(GroupMember::getGroupId)
                 .toList();
 
+        // 3. 해당 그룹들의 todo (다른 멤버가 만든 그룹 todo 포함)
+        List<Todo> groupTodos = myGroupIds.isEmpty() ? List.of() :
+                todoRepository.findByGroup_IdInAndStartDateLessThanEqualAndEndDateGreaterThanEqual(
+                        myGroupIds, to, from);
 
+        // 4. 합치고 중복 제거 (내가 만든 그룹 todo는 1·3 양쪽에 포함되므로)
+        Map<Long, Todo> merged = new LinkedHashMap<>();
+        for (Todo t : myTodos) merged.put(t.getId(), t);
+        for (Todo t : groupTodos) merged.put(t.getId(), t);
+
+        // 5. carryOver 이월 todo 추가 (오늘 이전/오늘 날짜 조회 시에만)
+        // 조건: carryOver=true, completed=false, startDate <= min(to, today)
+        if (!from.isAfter(today)) {
+            LocalDate carryOverBound = to.isBefore(today) ? to : today;
+
+            List<Todo> myCarryOvers = todoRepository
+                    .findByUser_IdAndCarryOverTrueAndCompletedFalseAndStartDateLessThanEqual(userId, carryOverBound);
+            for (Todo t : myCarryOvers) merged.put(t.getId(), t);
+
+            if (!myGroupIds.isEmpty()) {
+                List<Todo> groupCarryOvers = todoRepository
+                        .findByGroup_IdInAndCarryOverTrueAndCompletedFalseAndStartDateLessThanEqual(myGroupIds, carryOverBound);
+                for (Todo t : groupCarryOvers) merged.put(t.getId(), t);
+            }
+        }
+
+        return merged.values().stream().map(TodoResponse::from).toList();
     }
 
     //등록한 todo 수정

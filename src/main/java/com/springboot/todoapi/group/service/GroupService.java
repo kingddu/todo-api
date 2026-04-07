@@ -462,6 +462,9 @@ public class GroupService {
                 .collect(Collectors.toMap(User::getId, User::getName));
         Map<Long, String> memberUserEmailMap = memberUsers.stream()
                 .collect(Collectors.toMap(User::getId, User::getEmail));
+        Map<Long, String> memberProfileImageMap = memberUsers.stream()
+                .filter(u -> u.getProfileImageUrl() != null)
+                .collect(Collectors.toMap(User::getId, User::getProfileImageUrl));
 
         List<GroupDetailResponse.MemberInfo> members = activeMembers.stream()
                 .map(member -> GroupDetailResponse.MemberInfo.builder()
@@ -470,6 +473,7 @@ public class GroupService {
                         .userEmail(memberUserEmailMap.getOrDefault(member.getUserId(), ""))
                         .role(member.getRole().name())
                         .aliasName(member.getAliasName())
+                        .profileImageUrl(memberProfileImageMap.get(member.getUserId()))
                         .joinedAt(member.getJoinedAt())
                         .build())
                 .toList();

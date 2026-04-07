@@ -50,6 +50,9 @@ public class User {
     @Column(nullable = false)
     private LocalDateTime updatedAt;
 
+    @Column(length = 500)
+    private String profileImageUrl;
+
     @Builder(access = AccessLevel.PRIVATE)
     private User(String email, String password, String name, UserRole role, UserStatus status) {
         this.email = email;
@@ -88,5 +91,9 @@ public class User {
 
     public void withdraw() {
         this.status = UserStatus.WITHDRAWN;
+    }
+
+    public void updateProfileImage(String profileImageUrl) {
+        this.profileImageUrl = profileImageUrl;
     }
 }

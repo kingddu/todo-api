@@ -14,10 +14,12 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -84,5 +86,14 @@ public class AuthController {
             @Valid @RequestBody UpdateProfileRequest request
     ) {
         return ResponseEntity.ok(authService.updateProfile(principal.getId(), request.getName(), request.getEmail()));
+    }
+
+    @Operation(summary = "프로필 이미지 업로드")
+    @PostMapping(value = "/me/profile-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<MeResponse> uploadProfileImage(
+            @AuthenticationPrincipal CustomUserPrincipal principal,
+            @RequestParam("file") MultipartFile file
+    ) {
+        return ResponseEntity.ok(authService.uploadProfileImage(principal.getId(), file));
     }
 }

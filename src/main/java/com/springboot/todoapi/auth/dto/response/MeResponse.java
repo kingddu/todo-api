@@ -12,4 +12,5 @@ public class MeResponse {
     private String name;
     private String role;
     private String status;
+    private String profileImageUrl;
 }

@@ -11,6 +11,7 @@ import com.springboot.todoapi.user.repository.UserRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -22,7 +23,15 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
+
+import net.coobird.thumbnailator.Thumbnails;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 
 @Service
 @RequiredArgsConstructor
@@ -30,6 +39,9 @@ import org.springframework.web.server.ResponseStatusException;
 public class AuthService {
 
     private static final String BAD_CREDENTIALS_MESSAGE = "로그인 정보가 올바르지 않습니다.";
+
+    @Value("${app.upload.dir:./uploads}")
+    private String uploadDir;
 
     private final AuthenticationManager authenticationManager;
     private final UserRepository userRepository;
@@ -91,15 +103,13 @@ public class AuthService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다."));
 
-        // 이메일이 변경됐고 이미 사용 중인 경우
         if (!user.getEmail().equals(normalizedEmail) && userRepository.existsByEmail(normalizedEmail)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "이미 사용 중인 이메일입니다.");
         }
 
         user.updateProfile(name.trim(), normalizedEmail);
 
-        return new MeResponse(user.getId(), user.getEmail(), user.getName(),
-                user.getRole().name(), user.getStatus().name());
+        return toMeResponse(user);
     }
 
     public MeResponse me(CustomUserPrincipal principal) {
@@ -107,12 +117,44 @@ public class AuthService {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "인증이 필요합니다.");
         }
 
+        User user = userRepository.findById(principal.getId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다."));
+
+        return toMeResponse(user);
+    }
+
+    @Transactional
+    public MeResponse uploadProfileImage(Long userId, MultipartFile file) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다."));
+
+        String filename = "profile_" + userId + ".jpg";
+        Path dir = Paths.get(uploadDir, "profiles");
+
+        try {
+            Files.createDirectories(dir);
+            Thumbnails.of(file.getInputStream())
+                    .size(200, 200)
+                    .keepAspectRatio(true)
+                    .outputFormat("jpg")
+                    .outputQuality(0.80)
+                    .toFile(dir.resolve(filename).toFile());
+        } catch (IOException e) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "이미지 저장에 실패했어요.");
+        }
+
+        user.updateProfileImage("/uploads/profiles/" + filename);
+        return toMeResponse(user);
+    }
+
+    private MeResponse toMeResponse(User user) {
         return new MeResponse(
-                principal.getId(),
-                principal.getEmail(),
-                principal.getName(),
-                principal.getRole().name(),
-                principal.getStatus().name()
+                user.getId(),
+                user.getEmail(),
+                user.getName(),
+                user.getRole().name(),
+                user.getStatus().name(),
+                user.getProfileImageUrl()
         );
     }
 

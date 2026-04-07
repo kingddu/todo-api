@@ -89,6 +89,9 @@ public class GroupDetailResponse {
         @Schema(description = "개인 alias", example = "가족방")
         private String aliasName;
 
+        @Schema(description = "프로필 이미지 URL")
+        private String profileImageUrl;
+
         @Schema(description = "그룹 가입 일시")
         private LocalDateTime joinedAt;
     }
