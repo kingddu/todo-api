@@ -6,10 +6,14 @@ import com.springboot.todoapi.group.entity.TodoGroupStatus;
 import com.springboot.todoapi.group.repository.GroupMemberRepository;
 import com.springboot.todoapi.group.repository.TodoGroupRepository;
 import com.springboot.todoapi.todo.entity.TodoActionLog;
+import com.springboot.todoapi.todo.entity.TodoActionType;
 import com.springboot.todoapi.todo.repository.TodoActionLogRepository;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import com.springboot.todoapi.todo.dto.request.TodoCreateRequest;
 import com.springboot.todoapi.todo.dto.request.TodoPatchRequest;
+import com.springboot.todoapi.todo.dto.response.TodoEditLogResponse;
+import com.springboot.todoapi.todo.dto.response.TodoEditLogResponse.FieldChange;
 import com.springboot.todoapi.todo.dto.response.TodoResponse;
 import com.springboot.todoapi.todo.entity.Todo;
 import com.springboot.todoapi.todo.entity.TodoType;
@@ -26,10 +30,14 @@ import com.springboot.todoapi.group.entity.GroupMember;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 
 @Service
@@ -41,24 +49,22 @@ public class TodoService {
     private final UserRepository userRepository;
     private final TodoGroupRepository todoGroupRepository;
     private final GroupMemberRepository groupMemberRepository;
+    private final ObjectMapper objectMapper;
 
+    private static final String[] KO_DAY = {"일", "월", "화", "수", "목", "금", "토"};
 
-    private String buildUpdateDescription(JsonNode request) {
-        List<String> changedFields = new ArrayList<>();
+    private String formatDate(LocalDate date) {
+        if (date == null) return "";
+        return date.getMonthValue() + "." + date.getDayOfMonth() + ".(" + KO_DAY[date.getDayOfWeek().getValue() % 7] + ")";
+    }
 
-        if (request.has("title")) changedFields.add("title");
-        if (request.has("content")) changedFields.add("content");
-        if (request.has("category")) changedFields.add("category");
-        if (request.has("type")) changedFields.add("type");
-        if (request.has("startDate")) changedFields.add("startDate");
-        if (request.has("endDate")) changedFields.add("endDate");
-        if (request.has("carryOver")) changedFields.add("carryOver");
+    private String formatPeriod(LocalDate start, LocalDate end) {
+        if (start.equals(end)) return formatDate(start);
+        return formatDate(start) + " ~ " + formatDate(end);
+    }
 
-        if (changedFields.isEmpty()) {
-            return "Todo 수정";
-        }
-
-        return "수정 필드: " + String.join(", ", changedFields);
+    private String nvl(String value) {
+        return value == null ? "(없음)" : value;
     }
 
 
@@ -142,7 +148,9 @@ public class TodoService {
                 TodoActionLog.completed(todo, userId)
         );
 
-        return TodoResponse.from(todo);
+        int editCount = todoActionLogRepository.countByTodo_IdAndActionTypeIn(
+                todoId, List.of(TodoActionType.UPDATED, TodoActionType.COMPLETED, TodoActionType.UNCOMPLETED));
+        return TodoResponse.from(todo, editCount);
     }
 
     @Transactional
@@ -155,7 +163,9 @@ public class TodoService {
                 TodoActionLog.uncompleted(todo, userId)
         );
 
-        return TodoResponse.from(todo);
+        int editCount = todoActionLogRepository.countByTodo_IdAndActionTypeIn(
+                todoId, List.of(TodoActionType.UPDATED, TodoActionType.COMPLETED, TodoActionType.UNCOMPLETED));
+        return TodoResponse.from(todo, editCount);
     }
 
     // 본인이 만든 todo이거나, 해당 그룹의 활성 멤버이면 접근 허용
@@ -221,7 +231,106 @@ public class TodoService {
             }
         }
 
-        return merged.values().stream().map(TodoResponse::from).toList();
+        List<Long> todoIds = new ArrayList<>(merged.keySet());
+        Map<Long, Integer> editCounts = batchEditCounts(todoIds);
+
+        return merged.values().stream()
+                .map(t -> TodoResponse.from(t, editCounts.getOrDefault(t.getId(), 0)))
+                .toList();
+    }
+
+    // 키워드 검색 (내 todo + 내가 속한 그룹 todo, 최신순)
+    @Transactional(readOnly = true)
+    public List<TodoResponse> searchTodos(Long userId, String q) {
+        if (q == null || q.isBlank()) {
+            return List.of();
+        }
+        String keyword = q.trim();
+
+        List<Long> myGroupIds = groupMemberRepository
+                .findAllByUserIdAndStatus(userId, GroupMemberStatus.ACTIVE)
+                .stream()
+                .map(GroupMember::getGroupId)
+                .toList();
+
+        Map<Long, Todo> merged = new LinkedHashMap<>();
+
+        // 최신순(id desc)으로 내 todo 먼저
+        for (Todo t : todoRepository.searchByUserId(userId, keyword)) {
+            merged.put(t.getId(), t);
+        }
+        if (!myGroupIds.isEmpty()) {
+            for (Todo t : todoRepository.searchByGroupIds(myGroupIds, keyword)) {
+                merged.put(t.getId(), t);
+            }
+        }
+
+        List<Long> todoIds = new ArrayList<>(merged.keySet());
+        Map<Long, Integer> editCounts = batchEditCounts(todoIds);
+
+        // 중복 제거 후 날짜 최신순(startDate desc) 재정렬
+        return merged.values().stream()
+                .sorted((a, b) -> {
+                    int dateCompare = b.getStartDate().compareTo(a.getStartDate());
+                    return dateCompare != 0 ? dateCompare : Long.compare(b.getId(), a.getId());
+                })
+                .map(t -> TodoResponse.from(t, editCounts.getOrDefault(t.getId(), 0)))
+                .toList();
+    }
+
+    // 수정 이력 조회 (todo 소유자 또는 그룹 활성 멤버만)
+    @Transactional(readOnly = true)
+    public List<TodoEditLogResponse> getEditLogs(Long userId, Long todoId) {
+        findTodoWithAccess(userId, todoId); // 접근 권한 확인
+
+        List<TodoActionLog> logs = todoActionLogRepository
+                .findByTodo_IdAndActionTypeInOrderByCreatedAtDesc(
+                        todoId, List.of(TodoActionType.UPDATED, TodoActionType.COMPLETED, TodoActionType.UNCOMPLETED));
+
+        if (logs.isEmpty()) return List.of();
+
+        // 액터 userId → email 배치 조회
+        List<Long> actorIds = logs.stream().map(TodoActionLog::getActorUserId).distinct().toList();
+        Map<Long, String> emailMap = userRepository.findAllById(actorIds).stream()
+                .collect(Collectors.toMap(User::getId, User::getEmail));
+
+        return logs.stream()
+                .map(log -> {
+                    List<FieldChange> changes = resolveChanges(log);
+                    return TodoEditLogResponse.builder()
+                            .logId(log.getId())
+                            .changes(changes)
+                            .actorEmail(emailMap.getOrDefault(log.getActorUserId(), "알 수 없음"))
+                            .editedAt(log.getCreatedAt())
+                            .build();
+                })
+                .toList();
+    }
+
+    private List<FieldChange> resolveChanges(TodoActionLog log) {
+        if (log.getActionType() == TodoActionType.COMPLETED) {
+            return List.of(new FieldChange("완료 상태", "미완료", "완료"));
+        }
+        if (log.getActionType() == TodoActionType.UNCOMPLETED) {
+            return List.of(new FieldChange("완료 상태", "완료", "미완료"));
+        }
+        // UPDATED: description에 저장된 JSON 파싱
+        try {
+            return objectMapper.readValue(log.getDescription(),
+                    objectMapper.getTypeFactory().constructCollectionType(List.class, FieldChange.class));
+        } catch (Exception e) {
+            return List.of();
+        }
+    }
+
+    // todo ID 목록의 수정 횟수 배치 조회
+    private Map<Long, Integer> batchEditCounts(List<Long> todoIds) {
+        if (todoIds.isEmpty()) return Map.of();
+        Map<Long, Integer> result = new HashMap<>();
+        for (Object[] row : todoActionLogRepository.countUpdatesByTodoIds(todoIds)) {
+            result.put((Long) row[0], ((Long) row[1]).intValue());
+        }
+        return result;
     }
 
     //등록한 todo 수정
@@ -230,17 +339,48 @@ public class TodoService {
         Todo todo = todoRepository.findByIdAndUser_Id(todoId, userId)
                 .orElseThrow(() -> new IllegalArgumentException("수정할 todo가 없습니다."));
 
+        // 수정 전 값 캡처 (추적 대상: 제목, 내용, 기간, 미완료 시 이월)
+        String beforeTitle    = todo.getTitle();
+        String beforeContent  = todo.getContent();
+        LocalDate beforeStart = todo.getStartDate();
+        LocalDate beforeEnd   = todo.getEndDate();
+        boolean beforeCarryOver = todo.isCarryOver();
+
         applyPatch(todo, request);
         validatePatchedTodo(todo);
-
         todoRepository.flush();
 
-        //수정한 이력도 로그로 save
-        todoActionLogRepository.save(
-                TodoActionLog.updated(todo, userId, buildUpdateDescription(request))
-        );
+        // 변경된 필드만 FieldChange 목록으로 구성
+        List<FieldChange> changes = new ArrayList<>();
 
-        return TodoResponse.from(todo);
+        if (!Objects.equals(beforeTitle, todo.getTitle())) {
+            changes.add(new FieldChange("제목", nvl(beforeTitle), nvl(todo.getTitle())));
+        }
+        if (!Objects.equals(beforeContent, todo.getContent())) {
+            changes.add(new FieldChange("내용", nvl(beforeContent), nvl(todo.getContent())));
+        }
+        if (!beforeStart.equals(todo.getStartDate()) || !beforeEnd.equals(todo.getEndDate())) {
+            changes.add(new FieldChange("기간",
+                    formatPeriod(beforeStart, beforeEnd),
+                    formatPeriod(todo.getStartDate(), todo.getEndDate())));
+        }
+        if (beforeCarryOver != todo.isCarryOver()) {
+            changes.add(new FieldChange("미완료 시 이월",
+                    beforeCarryOver ? "이월" : "없음",
+                    todo.isCarryOver() ? "이월" : "없음"));
+        }
+
+        // 추적 대상 필드 변경이 있을 때만 로그 저장
+        if (!changes.isEmpty()) {
+            try {
+                String description = objectMapper.writeValueAsString(changes);
+                todoActionLogRepository.save(TodoActionLog.updated(todo, userId, description));
+            } catch (Exception ignored) {}
+        }
+
+        int editCount = todoActionLogRepository.countByTodo_IdAndActionTypeIn(
+                todoId, List.of(TodoActionType.UPDATED, TodoActionType.COMPLETED, TodoActionType.UNCOMPLETED));
+        return TodoResponse.from(todo, editCount);
     }
 
     private void applyPatch(Todo todo, JsonNode request) {

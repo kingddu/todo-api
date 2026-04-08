@@ -1,9 +1,11 @@
 package com.springboot.todoapi.auth.controller;
 
 
+import com.springboot.todoapi.auth.dto.request.ChangePasswordRequest;
 import com.springboot.todoapi.auth.dto.request.LoginRequest;
 import com.springboot.todoapi.auth.dto.request.SignupRequest;
 import com.springboot.todoapi.auth.dto.request.UpdateProfileRequest;
+import com.springboot.todoapi.auth.dto.request.VerifyPasswordRequest;
 import com.springboot.todoapi.auth.dto.response.AuthMessageResponse;
 import com.springboot.todoapi.auth.dto.response.CsrfResponse;
 import com.springboot.todoapi.auth.dto.response.LoginResponse;
@@ -86,6 +88,26 @@ public class AuthController {
             @Valid @RequestBody UpdateProfileRequest request
     ) {
         return ResponseEntity.ok(authService.updateProfile(principal.getId(), request.getName(), request.getEmail()));
+    }
+
+    @Operation(summary = "현재 비밀번호 확인")
+    @PostMapping("/me/verify-password")
+    public ResponseEntity<Void> verifyPassword(
+            @AuthenticationPrincipal CustomUserPrincipal principal,
+            @Valid @RequestBody VerifyPasswordRequest request
+    ) {
+        authService.verifyPassword(principal.getId(), request.getPassword());
+        return ResponseEntity.ok().build();
+    }
+
+    @Operation(summary = "비밀번호 변경")
+    @PatchMapping("/me/password")
+    public ResponseEntity<Void> changePassword(
+            @AuthenticationPrincipal CustomUserPrincipal principal,
+            @Valid @RequestBody ChangePasswordRequest request
+    ) {
+        authService.changePassword(principal.getId(), request.getCurrentPassword(), request.getNewPassword());
+        return ResponseEntity.noContent().build();
     }
 
     @Operation(summary = "프로필 이미지 업로드")

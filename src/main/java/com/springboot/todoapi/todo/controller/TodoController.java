@@ -4,6 +4,7 @@ import tools.jackson.databind.JsonNode;
 import com.springboot.todoapi.auth.security.CustomUserPrincipal;
 import com.springboot.todoapi.todo.dto.request.TodoCreateRequest;
 import com.springboot.todoapi.todo.dto.request.TodoPatchRequest;
+import com.springboot.todoapi.todo.dto.response.TodoEditLogResponse;
 import com.springboot.todoapi.todo.dto.response.TodoResponse;
 import com.springboot.todoapi.todo.service.TodoService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -42,6 +43,15 @@ public class TodoController {
         return ResponseEntity.ok(todoService.getTodosByRange(principal.getId(), from, to));
     }
 
+    @Operation(summary = "Todo 검색")
+    @GetMapping("/search")
+    public ResponseEntity<List<TodoResponse>> search(
+            @AuthenticationPrincipal CustomUserPrincipal principal,
+            @RequestParam String q
+    ) {
+        return ResponseEntity.ok(todoService.searchTodos(principal.getId(), q));
+    }
+
     @Operation(summary = "Todo 부분 수정")
     @io.swagger.v3.oas.annotations.parameters.RequestBody(
             required = true,
@@ -76,6 +86,15 @@ public class TodoController {
             @PathVariable Long todoId
     ) {
         return ResponseEntity.ok(todoService.complete(principal.getId(), todoId));
+    }
+
+    @Operation(summary = "Todo 수정 이력 조회")
+    @GetMapping("/{todoId}/logs")
+    public ResponseEntity<List<TodoEditLogResponse>> getEditLogs(
+            @AuthenticationPrincipal CustomUserPrincipal principal,
+            @PathVariable Long todoId
+    ) {
+        return ResponseEntity.ok(todoService.getEditLogs(principal.getId(), todoId));
     }
 
     @Operation(summary = "Todo 완료 취소")

@@ -36,7 +36,13 @@ public class TodoResponse {
     private String groupName;
     private boolean groupDisbanded;
 
+    private int editCount;
+
     public static TodoResponse from(Todo todo) {
+        return from(todo, 0);
+    }
+
+    public static TodoResponse from(Todo todo, int editCount) {
         TodoGroup group = todo.getGroup();
 
         return TodoResponse.builder()
@@ -54,6 +60,7 @@ public class TodoResponse {
                 .groupId(group != null ? group.getId() : null)
                 .groupName(group != null ? group.getGroupName() : null)
                 .groupDisbanded(group != null && group.getStatus() == TodoGroupStatus.DISBANDED)
+                .editCount(editCount)
                 .build();
     }
 }
