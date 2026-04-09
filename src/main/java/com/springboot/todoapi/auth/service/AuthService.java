@@ -26,6 +26,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
+
 import net.coobird.thumbnailator.Thumbnails;
 
 import java.io.IOException;
@@ -46,6 +47,7 @@ public class AuthService {
     private final AuthenticationManager authenticationManager;
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final EmailVerificationService emailVerificationService;
 
     @Transactional
     public void signup(SignupRequest request) {
@@ -56,8 +58,12 @@ public class AuthService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "이미 가입된 이메일입니다.");
         }
 
+        emailVerificationService.ensureSignupVerified(email);
+
         User user = User.create(email, passwordEncoder.encode(request.getPassword()), name);
         userRepository.save(user);
+
+        emailVerificationService.clearSignupVerification(email);
     }
 
     public LoginResponse login(LoginRequest request, HttpServletRequest httpRequest) {
@@ -97,17 +103,35 @@ public class AuthService {
     }
 
     @Transactional
-    public MeResponse updateProfile(Long userId, String name, String email) {
+    public MeResponse updateProfile(Long userId, String name) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다."));
+
+        user.updateProfile(name.trim(), user.getEmail());
+
+        return toMeResponse(user);
+    }
+
+    @Transactional
+    public MeResponse changeEmail(Long userId, String email) {
         String normalizedEmail = normalizeEmail(email);
 
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다."));
 
-        if (!user.getEmail().equals(normalizedEmail) && userRepository.existsByEmail(normalizedEmail)) {
+        if (user.getEmail().equals(normalizedEmail)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "현재 사용 중인 이메일과 같습니다.");
+        }
+
+        if (userRepository.existsByEmail(normalizedEmail)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "이미 사용 중인 이메일입니다.");
         }
 
-        user.updateProfile(name.trim(), normalizedEmail);
+        emailVerificationService.ensureChangeEmailVerified(userId, normalizedEmail);
+
+        user.updateProfile(user.getName(), normalizedEmail);
+
+        emailVerificationService.clearChangeEmailVerification(userId, normalizedEmail);
 
         return toMeResponse(user);
     }

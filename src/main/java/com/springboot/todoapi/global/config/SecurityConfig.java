@@ -52,7 +52,9 @@ public class SecurityConfig {
                                 "/uploads/**",
                                 "/v3/api-docs/**",
                                 "/swagger-ui/**",
-                                "/swagger-ui.html"
+                                "/swagger-ui.html",
+                                "/api/auth/email/signup/send-code",
+                                "/api/auth/email/signup/verify-code"
                         ).permitAll()
                         .anyRequest().authenticated()
                 )

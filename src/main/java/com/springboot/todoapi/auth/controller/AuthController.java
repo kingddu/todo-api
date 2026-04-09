@@ -26,6 +26,11 @@ import org.springframework.web.multipart.MultipartFile;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
+import com.springboot.todoapi.auth.dto.request.ChangeEmailRequest;
+import com.springboot.todoapi.auth.dto.request.SendEmailCodeRequest;
+import com.springboot.todoapi.auth.dto.request.VerifyEmailCodeRequest;
+import com.springboot.todoapi.auth.service.EmailVerificationService;
+
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/auth")
@@ -33,6 +38,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 public class AuthController {
 
     private final AuthService authService;
+    private final EmailVerificationService emailVerificationService;
 
     @Operation(summary = "CSRF 토큰 조회")
     @GetMapping("/csrf")
@@ -78,16 +84,59 @@ public class AuthController {
         return ResponseEntity.ok(authService.me(principal));
     }
 
-    @Operation(
-            summary = "내 프로필 수정",
-            description = "현재 로그인한 사용자의 이름과 이메일을 변경합니다."
-    )
     @PatchMapping("/me")
     public ResponseEntity<MeResponse> updateProfile(
             @AuthenticationPrincipal CustomUserPrincipal principal,
             @Valid @RequestBody UpdateProfileRequest request
     ) {
-        return ResponseEntity.ok(authService.updateProfile(principal.getId(), request.getName(), request.getEmail()));
+        return ResponseEntity.ok(authService.updateProfile(principal.getId(), request.getName()));
+    }
+
+    @Operation(summary = "회원가입 이메일 인증코드 발송")
+    @PostMapping("/email/signup/send-code")
+    public ResponseEntity<AuthMessageResponse> sendSignupEmailCode(
+            @Valid @RequestBody SendEmailCodeRequest request
+    ) {
+        emailVerificationService.sendSignupCode(request.getEmail());
+        return ResponseEntity.ok(new AuthMessageResponse("EMAIL_CODE_SENT"));
+    }
+
+    @Operation(summary = "회원가입 이메일 인증코드 확인")
+    @PostMapping("/email/signup/verify-code")
+    public ResponseEntity<AuthMessageResponse> verifySignupEmailCode(
+            @Valid @RequestBody VerifyEmailCodeRequest request
+    ) {
+        emailVerificationService.verifySignupCode(request.getEmail(), request.getCode());
+        return ResponseEntity.ok(new AuthMessageResponse("EMAIL_VERIFIED"));
+    }
+
+    @Operation(summary = "이메일 변경용 인증코드 발송")
+    @PostMapping("/me/email/send-code")
+    public ResponseEntity<AuthMessageResponse> sendChangeEmailCode(
+            @AuthenticationPrincipal CustomUserPrincipal principal,
+            @Valid @RequestBody SendEmailCodeRequest request
+    ) {
+        emailVerificationService.sendChangeEmailCode(principal.getId(), request.getEmail());
+        return ResponseEntity.ok(new AuthMessageResponse("EMAIL_CODE_SENT"));
+    }
+
+    @Operation(summary = "이메일 변경용 인증코드 확인")
+    @PostMapping("/me/email/verify-code")
+    public ResponseEntity<AuthMessageResponse> verifyChangeEmailCode(
+            @AuthenticationPrincipal CustomUserPrincipal principal,
+            @Valid @RequestBody VerifyEmailCodeRequest request
+    ) {
+        emailVerificationService.verifyChangeEmailCode(principal.getId(), request.getEmail(), request.getCode());
+        return ResponseEntity.ok(new AuthMessageResponse("EMAIL_VERIFIED"));
+    }
+
+    @Operation(summary = "내 이메일 변경")
+    @PatchMapping("/me/email")
+    public ResponseEntity<MeResponse> changeEmail(
+            @AuthenticationPrincipal CustomUserPrincipal principal,
+            @Valid @RequestBody ChangeEmailRequest request
+    ) {
+        return ResponseEntity.ok(authService.changeEmail(principal.getId(), request.getEmail()));
     }
 
     @Operation(summary = "현재 비밀번호 확인")
