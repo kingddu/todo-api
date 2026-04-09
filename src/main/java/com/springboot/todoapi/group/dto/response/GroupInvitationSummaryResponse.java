@@ -17,25 +17,28 @@ public class GroupInvitationSummaryResponse {
     private String groupName;
     private String status;
     private LocalDateTime expiresAt;
+    private String description;
     private Long invitedByUserId;
     private String invitedByUserName;
-    private List<String> memberEmails;
+    private String invitedByUserEmail;
 
     public static GroupInvitationSummaryResponse of(
             GroupInvitation invitation,
             String groupName,
+            String description,
             String invitedByUserName,
-            List<String> memberEmails
+            String invitedByUserEmail
     ) {
         return GroupInvitationSummaryResponse.builder()
                 .invitationId(invitation.getId())
                 .groupId(invitation.getGroupId())
                 .groupName(groupName)
+                .description(description)
                 .status(invitation.getStatus().name())
                 .expiresAt(invitation.getExpiresAt())
                 .invitedByUserId(invitation.getInvitedByUserId())
                 .invitedByUserName(invitedByUserName)
-                .memberEmails(memberEmails)
+                .invitedByUserEmail(invitedByUserEmail)
                 .build();
     }
 }

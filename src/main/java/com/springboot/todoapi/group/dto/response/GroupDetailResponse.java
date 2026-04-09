@@ -18,6 +18,9 @@ public class GroupDetailResponse {
     @Schema(description = "정식 그룹명", example = "family")
     private String groupName;
 
+    @Schema(description = "그룹 소개", example = "정가네 todo")
+    private String description;
+
     @Schema(description = "그룹 상태", example = "ACTIVE")
     private String groupStatus;
 
@@ -105,10 +108,22 @@ public class GroupDetailResponse {
         @Schema(description = "초대한 이메일", example = "test@example.com")
         private String email;
 
+        @Schema(description = "초대받은 사용자 ID (가입된 경우)")
+        private Long userId;
+
+        @Schema(description = "초대받은 사용자 이름 (가입된 경우)")
+        private String userName;
+
+        @Schema(description = "초대받은 사용자 프로필 이미지 URL")
+        private String profileImageUrl;
+
         @Schema(description = "초대한 사용자 ID", example = "2")
         private Long invitedByUserId;
 
         @Schema(description = "초대 만료 일시")
         private LocalDateTime expiresAt;
+
+        @Schema(description = "초대 생성 일시")
+        private LocalDateTime createdAt;
     }
 }

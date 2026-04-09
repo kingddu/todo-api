@@ -65,7 +65,10 @@ public class GroupService {
         validateSelfInvite(userEmail, request.getInviteEmails());
         validateBlockedByInvitees(userId, userEmail, request.getInviteEmails());
 
-        TodoGroup group = TodoGroup.create(normalizedGroupName, userId);
+        String description = request.getDescription() != null ? request.getDescription().trim() : null;
+        if (description != null && description.isBlank()) description = null;
+
+        TodoGroup group = TodoGroup.create(normalizedGroupName, userId, description);
         groupRepository.save(group);
 
         GroupMember leader = GroupMember.createLeader(group.getId(), userId);
@@ -123,35 +126,24 @@ public class GroupService {
                 ).stream()
                 .collect(Collectors.toMap(TodoGroup::getId, Function.identity()));
 
-        // 초대자 이름 조회
+        // 초대자 이름 + 이메일 조회
         Set<Long> inviterIds = activeInvitations.stream()
                 .map(GroupInvitation::getInvitedByUserId)
                 .collect(Collectors.toSet());
-        Map<Long, String> inviterNameMap = userRepository.findAllById(inviterIds).stream()
+        List<User> inviterUsers = userRepository.findAllById(inviterIds);
+        Map<Long, String> inviterNameMap = inviterUsers.stream()
                 .collect(Collectors.toMap(User::getId, User::getName));
-
-        // 각 그룹의 활성 멤버 이메일 조회
-        Set<Long> groupIds = groupMap.keySet();
-        List<GroupMember> allMembers = groupMemberRepository.findAllByGroupIdInAndStatus(groupIds, GroupMemberStatus.ACTIVE);
-        Set<Long> memberUserIds = allMembers.stream()
-                .map(GroupMember::getUserId)
-                .collect(Collectors.toSet());
-        Map<Long, String> memberEmailMap = userRepository.findAllById(memberUserIds).stream()
+        Map<Long, String> inviterEmailMap = inviterUsers.stream()
                 .collect(Collectors.toMap(User::getId, User::getEmail));
-
-        Map<Long, List<String>> memberEmailsByGroup = allMembers.stream()
-                .collect(Collectors.groupingBy(
-                        GroupMember::getGroupId,
-                        Collectors.mapping(m -> memberEmailMap.getOrDefault(m.getUserId(), ""), Collectors.toList())
-                ));
 
         return activeInvitations.stream()
                 .map(invitation -> {
                     TodoGroup group = groupMap.get(invitation.getGroupId());
                     String groupName = group != null ? group.getGroupName() : "(삭제된 그룹)";
                     String inviterName = inviterNameMap.getOrDefault(invitation.getInvitedByUserId(), "알 수 없음");
-                    List<String> memberEmails = memberEmailsByGroup.getOrDefault(invitation.getGroupId(), List.of());
-                    return GroupInvitationSummaryResponse.of(invitation, groupName, inviterName, memberEmails);
+                    String inviterEmail = inviterEmailMap.getOrDefault(invitation.getInvitedByUserId(), "");
+                    String groupDescription = group != null ? group.getDescription() : null;
+                    return GroupInvitationSummaryResponse.of(invitation, groupName, groupDescription, inviterName, inviterEmail);
                 })
                 .toList();
     }
@@ -481,17 +473,28 @@ public class GroupService {
         List<GroupDetailResponse.PendingInvitationInfo> pendingInvitations = groupInvitationRepository
                 .findAllByGroupIdAndStatusOrderByCreatedAtAsc(groupId, GroupInvitationStatus.PENDING)
                 .stream()
-                .map(invitation -> GroupDetailResponse.PendingInvitationInfo.builder()
-                        .invitationId(invitation.getId())
-                        .email(invitation.getEmail())
-                        .invitedByUserId(invitation.getInvitedByUserId())
-                        .expiresAt(invitation.getExpiresAt())
-                        .build())
+                .map(invitation -> {
+                    // 가입된 계정이 있는 경우에만 목록에 포함
+                    var invitedUser = userRepository.findByEmail(invitation.getEmail()).orElse(null);
+                    if (invitedUser == null) return null;
+                    return GroupDetailResponse.PendingInvitationInfo.builder()
+                            .invitationId(invitation.getId())
+                            .email(invitation.getEmail())
+                            .userId(invitedUser.getId())
+                            .userName(invitedUser.getName())
+                            .profileImageUrl(invitedUser.getProfileImageUrl())
+                            .invitedByUserId(invitation.getInvitedByUserId())
+                            .expiresAt(invitation.getExpiresAt())
+                            .createdAt(invitation.getCreatedAt())
+                            .build();
+                })
+                .filter(info -> info != null)
                 .toList();
 
         return GroupDetailResponse.builder()
                 .groupId(group.getId())
                 .groupName(group.getGroupName())
+                .description(group.getDescription())
                 .groupStatus(group.getStatus().name())
                 .creatorUserId(group.getCreatorUserId())
                 .createdAt(group.getCreatedAt())
@@ -510,6 +513,26 @@ public class GroupService {
                 .members(members)
                 .pendingInvitations(pendingInvitations)
                 .build();
+    }
+
+    public void cancelInvitation(Long userId, Long groupId, Long invitationId) {
+        GroupMember requester = groupMemberRepository
+                .findByGroupIdAndUserIdAndStatus(groupId, userId, GroupMemberStatus.ACTIVE)
+                .orElseThrow(() -> new IllegalArgumentException("해당 그룹의 활성 멤버가 아닙니다."));
+
+        if (!requester.isLeader()) {
+            throw new IllegalStateException("그룹장만 초대를 취소할 수 있습니다.");
+        }
+
+        GroupInvitation invitation = groupInvitationRepository.findByIdAndGroupId(invitationId, groupId)
+                .orElseThrow(() -> new IllegalArgumentException("해당 초대를 찾을 수 없습니다."));
+
+        if (!invitation.isPending()) {
+            throw new IllegalStateException("대기 중인 초대만 취소할 수 있습니다.");
+        }
+
+        groupInvitationRepository.delete(invitation);
+        syncGroupStatus(groupId);
     }
 
     public void kickMember(Long userId, Long groupId, Long targetUserId) {
@@ -560,6 +583,26 @@ public class GroupService {
 
         String normalizedGroupName = normalizeGroupName(groupName);
         group.changeGroupName(normalizedGroupName);
+    }
+
+    public void changeGroupDescription(Long userId, Long groupId, String description) {
+        TodoGroup group = groupRepository.findById(groupId)
+                .orElseThrow(() -> new IllegalArgumentException("그룹을 찾을 수 없습니다."));
+
+        if (group.getStatus() == TodoGroupStatus.DISBANDED) {
+            throw new IllegalStateException("해산된 그룹의 소개는 변경할 수 없습니다.");
+        }
+
+        GroupMember requester = groupMemberRepository
+                .findByGroupIdAndUserIdAndStatus(groupId, userId, GroupMemberStatus.ACTIVE)
+                .orElseThrow(() -> new IllegalArgumentException("해당 그룹의 활성 멤버가 아닙니다."));
+
+        if (!requester.isLeader()) {
+            throw new IllegalStateException("그룹장만 그룹 소개를 변경할 수 있습니다.");
+        }
+
+        String trimmed = (description == null) ? null : description.trim();
+        group.changeDescription((trimmed == null || trimmed.isEmpty()) ? null : trimmed);
     }
 
     public void disbandGroup(Long userId, Long groupId) {

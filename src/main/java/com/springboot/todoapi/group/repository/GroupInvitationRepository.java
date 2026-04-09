@@ -18,6 +18,8 @@ public interface GroupInvitationRepository extends JpaRepository<GroupInvitation
 
     Optional<GroupInvitation> findByIdAndEmail(Long id, String email);
 
+    Optional<GroupInvitation> findByIdAndGroupId(Long id, Long groupId);
+
     List<GroupInvitation> findAllByEmailAndStatusOrderByCreatedAtDesc(
             String email,
             GroupInvitationStatus status

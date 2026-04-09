@@ -166,7 +166,7 @@ public class EmailVerificationService {
     private void sendVerificationEmail(String to, String code, String actionName) {
         SimpleMailMessage message = new SimpleMailMessage();
         message.setTo(to);
-        message.setSubject("[TODO API] 이메일 인증코드");
+        message.setSubject("[TodoKing] 이메일 인증코드");
         message.setText(
                 "안녕하세요.\n\n" +
                         actionName + "을 위한 인증코드는 [" + code + "] 입니다.\n" +

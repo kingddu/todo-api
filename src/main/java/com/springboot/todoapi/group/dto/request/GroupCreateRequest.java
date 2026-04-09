@@ -17,6 +17,10 @@ public class GroupCreateRequest {
     @NotBlank
     private String groupName;
 
+    @Schema(description = "그룹 소개 (25자 이내, 선택)", example = "정가네 todo")
+    @Size(max = 25)
+    private String description;
+
     @Schema(description = "초대할 이메일 목록", example = "[\"a@test.com\", \"b@test.com\"]")
     @NotEmpty
     @Size(max = 20)

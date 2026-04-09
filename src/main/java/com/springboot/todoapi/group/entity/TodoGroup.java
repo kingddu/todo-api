@@ -31,17 +31,25 @@ public class TodoGroup {
     @Column(nullable = false)
     private LocalDateTime createdAt;
 
-    public static TodoGroup create(String groupName, Long userId) {
+    @Column(length = 25)
+    private String description;
+
+    public static TodoGroup create(String groupName, Long userId, String description) {
         return TodoGroup.builder()
                 .groupName(groupName)
                 .creatorUserId(userId)
                 .status(TodoGroupStatus.INVITING)
                 .createdAt(LocalDateTime.now())
+                .description(description)
                 .build();
     }
 
     public void changeGroupName(String groupName) {
         this.groupName = groupName;
+    }
+
+    public void changeDescription(String description) {
+        this.description = description;
     }
 
     public void activate() {

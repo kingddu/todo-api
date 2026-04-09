@@ -3,6 +3,7 @@ package com.springboot.todoapi.group.controller;
 import com.springboot.todoapi.auth.security.CustomUserPrincipal;
 import com.springboot.todoapi.group.dto.request.GroupAliasUpdateRequest;
 import com.springboot.todoapi.group.dto.request.GroupCreateRequest;
+import com.springboot.todoapi.group.dto.request.GroupDescriptionUpdateRequest;
 import com.springboot.todoapi.group.dto.request.GroupInviteRequest;
 import com.springboot.todoapi.group.dto.request.GroupLeaderTransferRequest;
 import com.springboot.todoapi.group.dto.request.GroupNameUpdateRequest;
@@ -153,6 +154,35 @@ public class GroupController {
             @AuthenticationPrincipal CustomUserPrincipal principal
     ) {
         return ResponseEntity.ok(groupService.getMyGroups(principal.getId()));
+    }
+
+    @Operation(
+            summary = "초대 취소",
+            description = "그룹장이 대기 중인 초대를 취소합니다."
+    )
+    @DeleteMapping("/{groupId}/invitations/{invitationId}")
+    public ResponseEntity<Void> cancelInvitation(
+            @AuthenticationPrincipal CustomUserPrincipal principal,
+            @PathVariable Long groupId,
+            @PathVariable Long invitationId
+    ) {
+        groupService.cancelInvitation(principal.getId(), groupId, invitationId);
+        return ResponseEntity.ok().build();
+    }
+
+    @Operation(
+            summary = "그룹 소개 변경",
+            description = "현재 그룹장이 그룹 소개를 변경합니다. 빈 값이면 소개가 삭제됩니다."
+    )
+    @PatchMapping("/{groupId}/description")
+    public ResponseEntity<Void> changeGroupDescription(
+            @AuthenticationPrincipal CustomUserPrincipal principal,
+            @Parameter(description = "그룹 ID", example = "1")
+            @PathVariable Long groupId,
+            @Valid @RequestBody GroupDescriptionUpdateRequest request
+    ) {
+        groupService.changeGroupDescription(principal.getId(), groupId, request.getDescription());
+        return ResponseEntity.ok().build();
     }
 
     @Operation(
