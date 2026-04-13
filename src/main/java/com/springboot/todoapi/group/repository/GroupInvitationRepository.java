@@ -16,6 +16,12 @@ public interface GroupInvitationRepository extends JpaRepository<GroupInvitation
             GroupInvitationStatus status
     );
 
+    List<GroupInvitation> findByGroupIdAndEmailInAndStatusIn(
+            Long groupId,
+            Collection<String> emails,
+            Collection<GroupInvitationStatus> statuses
+    );
+
     Optional<GroupInvitation> findByIdAndEmail(Long id, String email);
 
     Optional<GroupInvitation> findByIdAndGroupId(Long id, Long groupId);
@@ -32,5 +38,18 @@ public interface GroupInvitationRepository extends JpaRepository<GroupInvitation
             GroupInvitationStatus status
     );
 
+    List<GroupInvitation> findAllByGroupIdAndStatusInOrderByCreatedAtAsc(
+            Long groupId,
+            Collection<GroupInvitationStatus> statuses
+    );
+
     long countByGroupIdAndStatus(Long groupId, GroupInvitationStatus status);
+
+    long countByGroupIdAndStatusIn(Long groupId, Collection<GroupInvitationStatus> statuses);
+
+    List<GroupInvitation> findAllByEmailAndInvitedByUserIdAndStatus(
+            String email,
+            Long invitedByUserId,
+            GroupInvitationStatus status
+    );
 }

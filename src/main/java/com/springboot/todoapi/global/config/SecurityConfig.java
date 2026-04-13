@@ -54,7 +54,10 @@ public class SecurityConfig {
                                 "/swagger-ui/**",
                                 "/swagger-ui.html",
                                 "/api/auth/email/signup/send-code",
-                                "/api/auth/email/signup/verify-code"
+                                "/api/auth/email/signup/verify-code",
+                                "/api/auth/password/send-code",
+                                "/api/auth/password/verify-code",
+                                "/api/auth/password/reset"
                         ).permitAll()
                         .anyRequest().authenticated()
                 )

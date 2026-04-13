@@ -27,6 +27,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
 import com.springboot.todoapi.auth.dto.request.ChangeEmailRequest;
+import com.springboot.todoapi.auth.dto.request.ResetPasswordRequest;
 import com.springboot.todoapi.auth.dto.request.SendEmailCodeRequest;
 import com.springboot.todoapi.auth.dto.request.VerifyEmailCodeRequest;
 import com.springboot.todoapi.auth.service.EmailVerificationService;
@@ -137,6 +138,33 @@ public class AuthController {
             @Valid @RequestBody ChangeEmailRequest request
     ) {
         return ResponseEntity.ok(authService.changeEmail(principal.getId(), request.getEmail()));
+    }
+
+    @Operation(summary = "비밀번호 재설정 인증코드 발송")
+    @PostMapping("/password/send-code")
+    public ResponseEntity<AuthMessageResponse> sendResetPasswordCode(
+            @Valid @RequestBody SendEmailCodeRequest request
+    ) {
+        emailVerificationService.sendResetPasswordCode(request.getEmail());
+        return ResponseEntity.ok(new AuthMessageResponse("EMAIL_CODE_SENT"));
+    }
+
+    @Operation(summary = "비밀번호 재설정 인증코드 확인")
+    @PostMapping("/password/verify-code")
+    public ResponseEntity<AuthMessageResponse> verifyResetPasswordCode(
+            @Valid @RequestBody VerifyEmailCodeRequest request
+    ) {
+        emailVerificationService.verifyResetPasswordCode(request.getEmail(), request.getCode());
+        return ResponseEntity.ok(new AuthMessageResponse("EMAIL_VERIFIED"));
+    }
+
+    @Operation(summary = "비밀번호 재설정")
+    @PostMapping("/password/reset")
+    public ResponseEntity<Void> resetPassword(
+            @Valid @RequestBody ResetPasswordRequest request
+    ) {
+        authService.resetPassword(request.getEmail(), request.getNewPassword(), request.getConfirmPassword());
+        return ResponseEntity.noContent().build();
     }
 
     @Operation(summary = "현재 비밀번호 확인")

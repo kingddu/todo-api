@@ -11,6 +11,6 @@ public class GroupNameUpdateRequest {
 
     @Schema(description = "새 공식 그룹명", example = "우리집")
     @NotBlank
-    @Size(max = 100)
+    @Size(max = 20, message = "그룹 이름은 20자 이하여야 합니다.")
     private String groupName;
 }

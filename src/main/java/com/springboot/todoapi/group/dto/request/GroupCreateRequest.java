@@ -15,6 +15,7 @@ public class GroupCreateRequest {
 
     @Schema(description = "정식 그룹명", example = "가족")
     @NotBlank
+    @Size(max = 20, message = "그룹 이름은 20자 이하여야 합니다.")
     private String groupName;
 
     @Schema(description = "그룹 소개 (25자 이내, 선택)", example = "정가네 todo")

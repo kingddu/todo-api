@@ -17,7 +17,7 @@ public class TodoGroup {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "group_name", nullable = false, length = 100)
+    @Column(name = "group_name", nullable = false, length = 20)
     private String groupName;
 
     // 최초 생성자
@@ -27,6 +27,8 @@ public class TodoGroup {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private TodoGroupStatus status;
+
+
 
     @Column(nullable = false)
     private LocalDateTime createdAt;

@@ -63,7 +63,6 @@ public class GroupService {
 
         validateDuplicateEmails(request.getInviteEmails());
         validateSelfInvite(userEmail, request.getInviteEmails());
-        validateBlockedByInvitees(userId, userEmail, request.getInviteEmails());
 
         String description = request.getDescription() != null ? request.getDescription().trim() : null;
         if (description != null && description.isBlank()) description = null;
@@ -83,6 +82,9 @@ public class GroupService {
                         LocalDateTime.now().plusDays(7)
                 ))
                 .toList();
+
+        // 수신자가 발신자를 차단한 경우 즉시 BLOCKED 처리 (발신자에겐 대기중으로 보임)
+        blockInvitationsFromBlockedInvitees(userId, userEmail, invitations);
 
         groupInvitationRepository.saveAll(invitations);
 
@@ -227,9 +229,10 @@ public class GroupService {
                 GroupMemberStatus.ACTIVE
         );
 
-        long pendingInvitationCount = groupInvitationRepository.countByGroupIdAndStatus(
+        // BLOCKED 상태도 대기중으로 간주: 발신자 입장에선 아직 응답 대기 중
+        long pendingInvitationCount = groupInvitationRepository.countByGroupIdAndStatusIn(
                 groupId,
-                GroupInvitationStatus.PENDING
+                List.of(GroupInvitationStatus.PENDING, GroupInvitationStatus.BLOCKED)
         );
 
         if (activeMemberCount >= 2) {
@@ -351,10 +354,6 @@ public class GroupService {
             throw new IllegalStateException("해산된 그룹에는 초대할 수 없습니다.");
         }
 
-        if (group.getStatus() == TodoGroupStatus.INACTIVE) {
-            throw new IllegalStateException("비활성화된 그룹에는 더 이상 초대할 수 없습니다. 새 그룹을 만들어 주세요.");
-        }
-
         GroupMember requester = groupMemberRepository
                 .findByGroupIdAndUserIdAndStatus(groupId, userId, GroupMemberStatus.ACTIVE)
                 .orElseThrow(() -> new IllegalArgumentException("해당 그룹의 활성 멤버가 아닙니다."));
@@ -365,7 +364,6 @@ public class GroupService {
 
         validateDuplicateEmails(request.getInviteEmails());
         validateSelfInvite(userEmail, request.getInviteEmails());
-        validateBlockedByInvitees(userId, userEmail, request.getInviteEmails());
         validatePendingInvitations(groupId, request.getInviteEmails());
 
         List<GroupInvitation> invitations = request.getInviteEmails().stream()
@@ -378,6 +376,9 @@ public class GroupService {
                 ))
                 .toList();
 
+        // 수신자가 발신자를 차단한 경우 즉시 BLOCKED 처리 (발신자에겐 대기중으로 보임)
+        blockInvitationsFromBlockedInvitees(userId, userEmail, invitations);
+
         groupInvitationRepository.saveAll(invitations);
 
         syncGroupStatus(groupId);
@@ -388,10 +389,11 @@ public class GroupService {
                 .map(this::normalizeEmail)
                 .toList();
 
-        List<GroupInvitation> pendingInvitations = groupInvitationRepository.findByGroupIdAndEmailInAndStatus(
+        // BLOCKED도 발신자 입장에서 대기중이므로 중복 초대 방지
+        List<GroupInvitation> pendingInvitations = groupInvitationRepository.findByGroupIdAndEmailInAndStatusIn(
                 groupId,
                 normalizedEmails,
-                GroupInvitationStatus.PENDING
+                List.of(GroupInvitationStatus.PENDING, GroupInvitationStatus.BLOCKED)
         );
 
         if (!pendingInvitations.isEmpty()) {
@@ -470,8 +472,10 @@ public class GroupService {
                         .build())
                 .toList();
 
+        // BLOCKED 상태도 포함: 수신자가 차단했더라도 발신자(A)에겐 여전히 대기중으로 보여야 함
         List<GroupDetailResponse.PendingInvitationInfo> pendingInvitations = groupInvitationRepository
-                .findAllByGroupIdAndStatusOrderByCreatedAtAsc(groupId, GroupInvitationStatus.PENDING)
+                .findAllByGroupIdAndStatusInOrderByCreatedAtAsc(groupId,
+                        List.of(GroupInvitationStatus.PENDING, GroupInvitationStatus.BLOCKED))
                 .stream()
                 .map(invitation -> {
                     // 가입된 계정이 있는 경우에만 목록에 포함
@@ -527,7 +531,7 @@ public class GroupService {
         GroupInvitation invitation = groupInvitationRepository.findByIdAndGroupId(invitationId, groupId)
                 .orElseThrow(() -> new IllegalArgumentException("해당 초대를 찾을 수 없습니다."));
 
-        if (!invitation.isPending()) {
+        if (!invitation.isCancellable()) {
             throw new IllegalStateException("대기 중인 초대만 취소할 수 있습니다.");
         }
 
@@ -666,7 +670,7 @@ public class GroupService {
                 )
         );
 
-        rejectPendingInvitationsFromBlockedUser(normalizedBlockerEmail, blockedUser.getId());
+        blockPendingInvitationsFromBlockedUser(normalizedBlockerEmail, blockedUser.getId());
     }
 
     @Transactional(readOnly = true)
@@ -681,10 +685,34 @@ public class GroupService {
         GroupInvitationBlock block = groupInvitationBlockRepository.findByIdAndBlockerUserId(blockId, blockerUserId)
                 .orElseThrow(() -> new IllegalArgumentException("차단 내역을 찾을 수 없습니다."));
 
+        User blocker = userRepository.findById(blockerUserId)
+                .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
+        String blockerEmail = normalizeEmail(blocker.getEmail());
+        Long blockedUserId = block.getBlockedUserId();
+
         groupInvitationBlockRepository.delete(block);
+
+        // 차단으로 숨겨진 초대를 대기중으로 복귀
+        LocalDateTime now = LocalDateTime.now();
+        List<GroupInvitation> blockedInvitations = groupInvitationRepository
+                .findAllByEmailAndInvitedByUserIdAndStatus(blockerEmail, blockedUserId, GroupInvitationStatus.BLOCKED);
+
+        Set<Long> affectedGroupIds = new LinkedHashSet<>();
+        for (GroupInvitation invitation : blockedInvitations) {
+            if (!invitation.isExpired(now)) {
+                invitation.restore();
+                affectedGroupIds.add(invitation.getGroupId());
+            } else {
+                invitation.expire(now);
+            }
+        }
+
+        for (Long groupId : affectedGroupIds) {
+            syncGroupStatus(groupId);
+        }
     }
 
-    private void rejectPendingInvitationsFromBlockedUser(String blockerEmail, Long blockedUserId) {
+    private void blockPendingInvitationsFromBlockedUser(String blockerEmail, Long blockedUserId) {
         LocalDateTime now = LocalDateTime.now();
 
         List<GroupInvitation> invitations = groupInvitationRepository
@@ -694,7 +722,7 @@ public class GroupService {
 
         for (GroupInvitation invitation : invitations) {
             if (invitation.getInvitedByUserId().equals(blockedUserId)) {
-                invitation.reject(now);
+                invitation.block(now);
                 affectedGroupIds.add(invitation.getGroupId());
             }
         }
@@ -704,26 +732,26 @@ public class GroupService {
         }
     }
 
-    private void validateBlockedByInvitees(Long inviterUserId, String inviterEmail, List<String> inviteEmails) {
+    /**
+     * 초대 대상이 발신자를 차단한 경우 해당 초대를 즉시 BLOCKED 처리한다.
+     * 발신자에겐 아무 오류 없이 대기중으로 보이고, 수신자는 초대 목록에 노출되지 않는다.
+     */
+    private void blockInvitationsFromBlockedInvitees(
+            Long inviterUserId, String inviterEmail, List<GroupInvitation> invitations) {
         String normalizedInviterEmail = normalizeEmail(inviterEmail);
+        LocalDateTime now = LocalDateTime.now();
 
-        for (String inviteEmail : inviteEmails) {
-            String normalizedInviteeEmail = normalizeEmail(inviteEmail);
-
-            var invitee = userRepository.findByEmail(normalizedInviteeEmail).orElse(null);
-
-            if (invitee == null) {
-                continue;
-            }
+        for (GroupInvitation invitation : invitations) {
+            var invitee = userRepository.findByEmail(invitation.getEmail()).orElse(null);
+            if (invitee == null) continue;
 
             boolean blockedByUserId = groupInvitationBlockRepository
                     .existsByBlockerUserIdAndBlockedUserId(invitee.getId(), inviterUserId);
-
             boolean blockedByEmail = groupInvitationBlockRepository
                     .existsByBlockerUserIdAndBlockedEmail(invitee.getId(), normalizedInviterEmail);
 
             if (blockedByUserId || blockedByEmail) {
-                throw new IllegalArgumentException("초대를 처리할 수 없는 대상이 포함되어 있습니다.");
+                invitation.block(now);
             }
         }
     }

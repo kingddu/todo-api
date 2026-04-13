@@ -156,6 +156,24 @@ public class AuthService {
         user.changePassword(passwordEncoder.encode(newPassword));
     }
 
+    @Transactional
+    public void resetPassword(String email, String newPassword, String confirmPassword) {
+        if (!newPassword.equals(confirmPassword)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "새 비밀번호가 일치하지 않습니다.");
+        }
+
+        String normalizedEmail = normalizeEmail(email);
+
+        emailVerificationService.ensureResetPasswordVerified(normalizedEmail);
+
+        User user = userRepository.findByEmail(normalizedEmail)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다."));
+
+        user.changePassword(passwordEncoder.encode(newPassword));
+
+        emailVerificationService.clearResetPasswordVerification(normalizedEmail);
+    }
+
     public MeResponse me(CustomUserPrincipal principal) {
         if (principal == null) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "인증이 필요합니다.");

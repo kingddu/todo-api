@@ -54,6 +54,12 @@ public class GroupInvitation {
         return this.status == GroupInvitationStatus.PENDING;
     }
 
+    // 발신자 입장에서 취소 가능한 상태 (PENDING 또는 BLOCKED - 수신자가 차단해도 발신자에겐 대기중으로 보임)
+    public boolean isCancellable() {
+        return this.status == GroupInvitationStatus.PENDING
+                || this.status == GroupInvitationStatus.BLOCKED;
+    }
+
     public boolean isExpired(LocalDateTime now) {
         return !this.expiresAt.isAfter(now);
     }
@@ -71,5 +77,15 @@ public class GroupInvitation {
     public void expire(LocalDateTime now) {
         this.status = GroupInvitationStatus.EXPIRED;
         this.respondedAt = now;
+    }
+
+    public void block(LocalDateTime now) {
+        this.status = GroupInvitationStatus.BLOCKED;
+        this.respondedAt = now;
+    }
+
+    public void restore() {
+        this.status = GroupInvitationStatus.PENDING;
+        this.respondedAt = null;
     }
 }

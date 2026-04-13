@@ -163,6 +163,66 @@ public class EmailVerificationService {
         stringRedisTemplate.delete(successKey(EmailVerificationPurpose.CHANGE_EMAIL, userId, newEmail));
     }
 
+    @Transactional
+    public void sendResetPasswordCode(String rawEmail) {
+        String email = normalizeEmail(rawEmail);
+
+        if (!userRepository.existsByEmail(email)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "가입된 이메일이 아닙니다.");
+        }
+
+        String code = generateCode();
+
+        stringRedisTemplate.opsForValue().set(
+                codeKey(EmailVerificationPurpose.RESET_PASSWORD, null, email),
+                code,
+                Duration.ofSeconds(codeExpirationSeconds)
+        );
+
+        stringRedisTemplate.delete(successKey(EmailVerificationPurpose.RESET_PASSWORD, null, email));
+
+        sendVerificationEmail(email, code, "비밀번호 재설정");
+    }
+
+    @Transactional
+    public void verifyResetPasswordCode(String rawEmail, String inputCode) {
+        String email = normalizeEmail(rawEmail);
+
+        String savedCode = stringRedisTemplate.opsForValue()
+                .get(codeKey(EmailVerificationPurpose.RESET_PASSWORD, null, email));
+
+        if (savedCode == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "인증코드가 만료되었거나 존재하지 않습니다.");
+        }
+
+        if (!savedCode.equals(inputCode.trim())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "인증코드가 올바르지 않습니다.");
+        }
+
+        stringRedisTemplate.delete(codeKey(EmailVerificationPurpose.RESET_PASSWORD, null, email));
+        stringRedisTemplate.opsForValue().set(
+                successKey(EmailVerificationPurpose.RESET_PASSWORD, null, email),
+                "true",
+                Duration.ofSeconds(successExpirationSeconds)
+        );
+    }
+
+    public void ensureResetPasswordVerified(String rawEmail) {
+        String email = normalizeEmail(rawEmail);
+        String verified = stringRedisTemplate.opsForValue()
+                .get(successKey(EmailVerificationPurpose.RESET_PASSWORD, null, email));
+
+        if (!"true".equals(verified)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "이메일 인증이 완료되지 않았습니다.");
+        }
+    }
+
+    @Transactional
+    public void clearResetPasswordVerification(String rawEmail) {
+        String email = normalizeEmail(rawEmail);
+        stringRedisTemplate.delete(successKey(EmailVerificationPurpose.RESET_PASSWORD, null, email));
+    }
+
     private void sendVerificationEmail(String to, String code, String actionName) {
         SimpleMailMessage message = new SimpleMailMessage();
         message.setTo(to);
