@@ -15,10 +15,10 @@ import java.time.LocalDateTime;
 public class TodoResponse {
 
     private Long id;
+    private Long creatorUserId;
 
     private String title;
     private String content;
-    private String category;
 
     private TodoType type;
 
@@ -47,9 +47,9 @@ public class TodoResponse {
 
         return TodoResponse.builder()
                 .id(todo.getId())
+                .creatorUserId(todo.getUser().getId())
                 .title(todo.getTitle())
                 .content(todo.getContent())
-                .category(todo.getCategory())
                 .type(todo.getType())
                 .startDate(todo.getStartDate())
                 .endDate(todo.getEndDate())

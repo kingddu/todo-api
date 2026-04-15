@@ -38,19 +38,17 @@ public interface TodoRepository extends JpaRepository<Todo, Long> {
             LocalDate startDateBound
     );
 
-    // 키워드 검색 - 내 todo (title/content/category, 날짜 최신순)
+    // 키워드 검색 - 내 todo (title/content, 날짜 최신순)
     @Query("SELECT t FROM Todo t WHERE t.user.id = :userId AND (" +
            "LOWER(t.title) LIKE LOWER(CONCAT('%', :q, '%')) OR " +
-           "LOWER(t.content) LIKE LOWER(CONCAT('%', :q, '%')) OR " +
-           "LOWER(t.category) LIKE LOWER(CONCAT('%', :q, '%'))) " +
+           "LOWER(t.content) LIKE LOWER(CONCAT('%', :q, '%'))) " +
            "ORDER BY t.startDate DESC, t.id DESC")
     List<Todo> searchByUserId(@Param("userId") Long userId, @Param("q") String q);
 
     // 키워드 검색 - 그룹 todo (날짜 최신순)
     @Query("SELECT t FROM Todo t WHERE t.group.id IN :groupIds AND (" +
            "LOWER(t.title) LIKE LOWER(CONCAT('%', :q, '%')) OR " +
-           "LOWER(t.content) LIKE LOWER(CONCAT('%', :q, '%')) OR " +
-           "LOWER(t.category) LIKE LOWER(CONCAT('%', :q, '%'))) " +
+           "LOWER(t.content) LIKE LOWER(CONCAT('%', :q, '%'))) " +
            "ORDER BY t.startDate DESC, t.id DESC")
     List<Todo> searchByGroupIds(@Param("groupIds") Collection<Long> groupIds, @Param("q") String q);
 

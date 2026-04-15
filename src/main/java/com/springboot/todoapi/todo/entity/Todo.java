@@ -38,8 +38,6 @@ public class Todo {
     @Column(length = 1000)
     private String content;
 
-    private String category;
-
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private TodoType type;
@@ -71,7 +69,6 @@ public class Todo {
     public Todo(
             String title,
             String content,
-            String category,
             TodoType type,
             LocalDate startDate,
             LocalDate endDate,
@@ -81,7 +78,6 @@ public class Todo {
     ) {
         this.title = title;
         this.content = content;
-        this.category = category;
         this.type = type;
         this.startDate = startDate;
         this.endDate = endDate;
@@ -115,10 +111,6 @@ public class Todo {
         this.content = content;
     }
 
-    public void changeCategory(String category) {
-        this.category = category;
-    }
-
     public void changeType(TodoType type) {
         this.type = type;
     }
@@ -131,5 +123,7 @@ public class Todo {
         this.endDate = endDate;
     }
 
-
+    public void changeGroup(TodoGroup group) {
+        this.group = group;
+    }
 }

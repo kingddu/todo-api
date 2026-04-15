@@ -14,9 +14,6 @@ public class TodoPatchRequest {
     @Schema(description = "상세 내용", nullable = true)
     private String content;
 
-    @Schema(description = "카테고리", nullable = true)
-    private String category;
-
     @Schema(description = "Todo 타입", allowableValues = {"DATE_ONLY", "RANGE", "DEADLINE"})
     private TodoType type;
 

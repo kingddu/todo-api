@@ -15,8 +15,6 @@ public class TodoCreateRequest {
 
     private String content;
 
-    private String category;
-
     @NotNull
     private TodoType type;
 

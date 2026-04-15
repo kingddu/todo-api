@@ -3,9 +3,12 @@ package com.springboot.todoapi.todo.controller;
 import tools.jackson.databind.JsonNode;
 import com.springboot.todoapi.auth.security.CustomUserPrincipal;
 import com.springboot.todoapi.todo.dto.request.TodoCreateRequest;
+import com.springboot.todoapi.todo.dto.request.TodoMemoRequest;
 import com.springboot.todoapi.todo.dto.request.TodoPatchRequest;
 import com.springboot.todoapi.todo.dto.response.TodoEditLogResponse;
+import com.springboot.todoapi.todo.dto.response.TodoMemoResponse;
 import com.springboot.todoapi.todo.dto.response.TodoResponse;
+import com.springboot.todoapi.todo.service.TodoMemoService;
 import com.springboot.todoapi.todo.service.TodoService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -25,6 +28,7 @@ import java.util.List;
 public class TodoController {
 
     private final TodoService todoService;
+    private final TodoMemoService todoMemoService;
 
     @PostMapping
     public ResponseEntity<TodoResponse> create(
@@ -104,5 +108,34 @@ public class TodoController {
             @PathVariable Long todoId
     ) {
         return ResponseEntity.ok(todoService.uncomplete(principal.getId(), todoId));
+    }
+
+    @Operation(summary = "Todo 메모 목록 조회")
+    @GetMapping("/{todoId}/memos")
+    public ResponseEntity<List<TodoMemoResponse>> getMemos(
+            @AuthenticationPrincipal CustomUserPrincipal principal,
+            @PathVariable Long todoId
+    ) {
+        return ResponseEntity.ok(todoMemoService.getMemos(todoId, principal.getId()));
+    }
+
+    @Operation(summary = "Todo 메모 저장 (등록 또는 수정)")
+    @PostMapping("/{todoId}/memos")
+    public ResponseEntity<TodoMemoResponse> saveMemo(
+            @AuthenticationPrincipal CustomUserPrincipal principal,
+            @PathVariable Long todoId,
+            @Valid @RequestBody TodoMemoRequest request
+    ) {
+        return ResponseEntity.ok(todoMemoService.saveMemo(todoId, principal.getId(), request.getContent()));
+    }
+
+    @Operation(summary = "내 Todo 메모 삭제")
+    @DeleteMapping("/{todoId}/memos/me")
+    public ResponseEntity<Void> deleteMemo(
+            @AuthenticationPrincipal CustomUserPrincipal principal,
+            @PathVariable Long todoId
+    ) {
+        todoMemoService.deleteMemo(todoId, principal.getId());
+        return ResponseEntity.noContent().build();
     }
 }

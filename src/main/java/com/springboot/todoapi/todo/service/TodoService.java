@@ -8,6 +8,7 @@ import com.springboot.todoapi.group.repository.TodoGroupRepository;
 import com.springboot.todoapi.todo.entity.TodoActionLog;
 import com.springboot.todoapi.todo.entity.TodoActionType;
 import com.springboot.todoapi.todo.repository.TodoActionLogRepository;
+import com.springboot.todoapi.todo.repository.TodoMemoRepository;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import com.springboot.todoapi.todo.dto.request.TodoCreateRequest;
@@ -46,6 +47,7 @@ public class TodoService {
 
     private final TodoRepository todoRepository;
     private final TodoActionLogRepository todoActionLogRepository;
+    private final TodoMemoRepository todoMemoRepository;
     private final UserRepository userRepository;
     private final TodoGroupRepository todoGroupRepository;
     private final GroupMemberRepository groupMemberRepository;
@@ -89,7 +91,6 @@ public class TodoService {
         Todo todo = Todo.builder()
                 .title(request.getTitle())
                 .content(normalizeNullableText(request.getContent()))
-                .category(normalizeNullableText(request.getCategory()))
                 .type(request.getType())
                 .startDate(startDate)
                 .endDate(endDate)
@@ -131,10 +132,27 @@ public class TodoService {
 
     @Transactional
     public void delete(Long userId, Long todoId) {
-        Todo todo = todoRepository.findByIdAndUser_Id(todoId, userId)
+        Todo todo = todoRepository.findById(todoId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "삭제할 Todo가 없습니다."));
 
+        boolean isCreator = todo.getUser().getId().equals(userId);
+
+        boolean isGroupLeader = false;
+        if (todo.getGroup() != null) {
+            isGroupLeader = groupMemberRepository
+                    .findByGroupIdAndRoleAndStatus(todo.getGroup().getId(),
+                            com.springboot.todoapi.group.entity.GroupMemberRole.LEADER,
+                            com.springboot.todoapi.group.entity.GroupMemberStatus.ACTIVE)
+                    .map(leader -> leader.getUserId().equals(userId))
+                    .orElse(false);
+        }
+
+        if (!isCreator && !isGroupLeader) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "삭제 권한이 없습니다.");
+        }
+
         todoActionLogRepository.deleteAllByTodo_Id(todoId);
+        todoMemoRepository.deleteAllByTodoId(todoId);
         todoRepository.delete(todo);
     }
 
@@ -336,15 +354,35 @@ public class TodoService {
     //등록한 todo 수정
     @Transactional
     public TodoResponse patchTodo(Long userId, Long todoId, JsonNode request) {
-        Todo todo = todoRepository.findByIdAndUser_Id(todoId, userId)
-                .orElseThrow(() -> new IllegalArgumentException("수정할 todo가 없습니다."));
+        Todo todo = findTodoWithAccess(userId, todoId);
 
-        // 수정 전 값 캡처 (추적 대상: 제목, 내용, 기간, 미완료 시 이월)
+        // 수정 전 값 캡처 (추적 대상: 제목, 내용, 기간, 미완료 시 이월, 그룹)
         String beforeTitle    = todo.getTitle();
         String beforeContent  = todo.getContent();
         LocalDate beforeStart = todo.getStartDate();
         LocalDate beforeEnd   = todo.getEndDate();
         boolean beforeCarryOver = todo.isCarryOver();
+        String beforeGroupName = todo.getGroup() != null ? todo.getGroup().getGroupName() : null;
+
+        // groupId 패치 처리 (다른 필드와 별도로 처리)
+        if (request.has("groupId")) {
+            JsonNode groupNode = request.get("groupId");
+            Long newGroupId = (groupNode == null || groupNode.isNull()) ? null : groupNode.asLong();
+
+            // 이미 그룹에 속한 todo는 그룹을 변경할 수 없음
+            if (todo.getGroup() != null) {
+                Long currentGroupId = todo.getGroup().getId();
+                if (!currentGroupId.equals(newGroupId)) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                            "그룹에 속한 Todo는 그룹을 변경할 수 없습니다.");
+                }
+                // 동일 그룹이면 변경 없음 → skip
+            } else {
+                // 개인 todo → 그룹 지정 가능
+                TodoGroup newGroup = resolveGroup(newGroupId, userId);
+                todo.changeGroup(newGroup);
+            }
+        }
 
         applyPatch(todo, request);
         validatePatchedTodo(todo);
@@ -368,6 +406,12 @@ public class TodoService {
             changes.add(new FieldChange("미완료 시 이월",
                     beforeCarryOver ? "이월" : "없음",
                     todo.isCarryOver() ? "이월" : "없음"));
+        }
+        String afterGroupName = todo.getGroup() != null ? todo.getGroup().getGroupName() : null;
+        if (!Objects.equals(beforeGroupName, afterGroupName)) {
+            changes.add(new FieldChange("그룹",
+                    beforeGroupName != null ? beforeGroupName : "개인",
+                    afterGroupName != null ? afterGroupName : "개인"));
         }
 
         // 추적 대상 필드 변경이 있을 때만 로그 저장
@@ -396,9 +440,6 @@ public class TodoService {
             todo.changeContent(normalizeNullableText(request.get("content")));
         }
 
-        if (request.has("category")) {
-            todo.changeCategory(normalizeNullableText(request.get("category")));
-        }
 
         if (request.has("type")) {
             JsonNode node = request.get("type");
